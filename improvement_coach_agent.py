@@ -2,8 +2,8 @@
 """Improvement Coach Agent (Gemini Flash Lite)
 
 Generates TWO sections only from a drill JSON:
-- What went well: 2–3 short bullets
-- What to work on: 2–3 short bullets
+- What went well: 2 to 3 short bullets
+- What to work on: 2 to 3 short bullets
 
 Usage:
   python improvement_coach_agent.py results/drill/foo_drill_feedback.json

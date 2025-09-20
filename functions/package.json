@@ -1,0 +1,16 @@
+{
+  "name": "puck-buddy-functions",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "^4.6.0",
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^4.4.1"
+  }
+}
+
+

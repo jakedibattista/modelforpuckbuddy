@@ -15,6 +15,7 @@ Output: concise JSON with phase times and metrics.
 """
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -256,7 +257,9 @@ def window_for_peak(i: int, wrist_vx: np.ndarray, n: int, fps: float, stride: in
 
 
 def analyze_drill(video_path: str) -> Dict:
-    norm_path = str(Path("videos/processed") / (Path(video_path).stem + "_norm.mp4"))
+    # Allow worker to control temp/output directory via PB_WORK_DIR
+    base_dir = os.getenv("PB_WORK_DIR", "videos/processed")
+    norm_path = str(Path(base_dir) / (Path(video_path).stem + "_norm.mp4"))
     run_ffmpeg_normalize(video_path, norm_path, fps=30, width=960)
     use_path = norm_path if Path(norm_path).exists() else video_path
 

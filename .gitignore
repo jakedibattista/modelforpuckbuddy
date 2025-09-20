@@ -1,3 +1,8 @@
 videos/
 results/
 .env
+__pycache__/
+*.pyc
+GoogleService-Info.plist
+node_modules/
+.DS_Store
