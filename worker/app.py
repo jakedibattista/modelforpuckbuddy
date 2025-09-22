@@ -3,9 +3,9 @@
 
 Receives Pub/Sub push messages containing `{ "jobId": "..." }` in the data payload.
 Looks up the job in Firestore, downloads the video from Firebase Storage, runs
-analysis via `drill_feedback.analyze_drill`, then generates summaries using
-`parent_feedback_agent.generate_summary_with_gemini` and
-`improvement_coach_agent.generate_sections`.
+analysis via `analysis.drill_feedback.analyze_drill`, then generates summaries using
+`agents.parent_feedback_agent.generate_summary_with_gemini` and
+`agents.improvement_coach_agent.generate_sections`.
 
 Environment variables:
 - PB_STORAGE_BUCKET: GCS bucket name for Firebase Storage (e.g., your-project.appspot.com)
@@ -31,9 +31,9 @@ from google.cloud import firestore  # type: ignore
 from google.cloud import storage  # type: ignore
 
 # Import local analysis modules from repository
-from drill_feedback import analyze_drill  # type: ignore
-from parent_feedback_agent import generate_summary_with_gemini  # type: ignore
-from improvement_coach_agent import generate_sections  # type: ignore
+from analysis.drill_feedback import analyze_drill  # type: ignore
+from agents.parent_feedback_agent import generate_summary_with_gemini  # type: ignore
+from agents.improvement_coach_agent import generate_sections  # type: ignore
 
 
 app = FastAPI()

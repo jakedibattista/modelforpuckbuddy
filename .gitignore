@@ -6,3 +6,4 @@ __pycache__/
 GoogleService-Info.plist
 node_modules/
 .DS_Store
+.venv/
