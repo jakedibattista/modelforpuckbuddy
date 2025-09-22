@@ -83,8 +83,8 @@ cp /path/to/your/hockey_video.mp4 videos/input/
 ### Step 3: Run the Analysis (Drill Feedback)
 
 ```bash
-# Run the drill feedback analyzer
-python drill_feedback.py
+# Run analyze_drill from the packaged module
+python -c "from analysis.drill_feedback import analyze_drill; import json; print(json.dumps(analyze_drill('videos/input/your_clip.mov'), indent=2))"
 ```
 
 The script will automatically:
@@ -103,7 +103,7 @@ We separate the end-user report into two parts using lightweight LLM agents:
 - Parent per-shot report (times and metrics only)
 
 ```bash
-python parent_feedback_agent.py results/drill/<your_video>_drill_feedback.json
+python -m agents.parent_feedback_agent results/drill/<your_video>_drill_feedback.json
 ```
 
 Output: First line with shot times, then one bullet per shot:
@@ -112,7 +112,7 @@ Output: First line with shot times, then one bullet per shot:
 - Improvement coaching sections (What went well / What to work on)
 
 ```bash
-python improvement_coach_agent.py results/drill/<your_video>_drill_feedback.json
+python -m agents.improvement_coach_agent results/drill/<your_video>_drill_feedback.json
 ```
 
 Output: Two sections with 2–3 concise, coach-like bullets each.

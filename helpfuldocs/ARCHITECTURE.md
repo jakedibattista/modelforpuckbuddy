@@ -1,6 +1,6 @@
 ## PuckBuddy Processing Architecture (Option A)
 
-This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the existing Python modules: `drill_feedback.py`, `parent_feedback_agent.py`, and `improvement_coach_agent.py`.
+This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/drill_feedback.py`, `agents/parent_feedback_agent.py`, and `agents/improvement_coach_agent.py`.
 
 ### Goals
 - **Reliability**: Avoid client timeouts; handle retries; isolate heavy compute.
@@ -15,6 +15,26 @@ This document describes the end-to-end design to let the iOS app send videos for
 4. Pub/Sub pushes the message to a Cloud Run service (Python worker container).
 5. Worker downloads the video from Storage, runs analysis and summaries, and writes updates back to `jobs/{jobId}` (`status`, `progress`, `results`).
 6. iOS listens to `jobs/{jobId}` in real-time and renders updates; on completion, shows text outputs. An optional cleanup removes the job after a short TTL.
+
+
+## TL;DR of high-level flow (technical)
+Client (iOS)
+  Uploads video to Storage at users/{uid}/{uuid}.mov.
+  Creates Firestore doc jobs/{jobId} with:
+    userId, storagePath, status='queued', progress=0, createdAt/updatedAt.
+Cloud Function (enqueue)
+  Trigger: on create of jobs/{jobId}, if status=='queued'.
+  Publishes { jobId } to Pub/Sub topic process-video.
+Cloud Run worker
+  Receives Pub/Sub push with { jobId }.
+  Loads Firestore doc, sets status='processing', progress≈10.
+  Downloads video from Storage, sets PB_WORK_DIR, runs `analysis.drill_feedback.analyze_drill()`.
+  Writes drill results into jobs/{jobId}.drill and progress≈70.
+  Generates summaries with agents (status='summarizing', progress≈80).
+  Writes parent_summary, coach_summary, then status='completed', progress=100.
+Client (iOS)
+  Listens to jobs/{jobId}.
+  Renders progress and, when completed, reads parent_summary, coach_summary, and drill.
 
 ## Data Model (Firestore)
 Collection: `jobs`
@@ -159,7 +179,7 @@ service firebase.storage {
 1. Enable APIs: Cloud Run, Cloud Functions v2, Pub/Sub, Secret Manager, Firestore, Storage.
 2. Create Pub/Sub topic `process-video` and push subscription to Cloud Run URL (after deploy).
 3. Build and deploy Cloud Run worker:
-   - Dockerfile: Python base, `apt-get install -y ffmpeg`, `pip install mediapipe opencv-python numpy google-genai firebase-admin google-cloud-storage google-cloud-firestore`.
+   - Dockerfile: Python base, `apt-get install -y ffmpeg`, `pip install mediapipe opencv-python-headless numpy google-genai google-cloud-storage google-cloud-firestore`.
    - Set memory (e.g., 2–4 GB), CPU (2 vCPU), concurrency 1–2, timeout 15m.
    - Mount `GOOGLE_API_KEY` from Secret Manager.
 4. Deploy Firestore-triggered Cloud Function (2nd gen) to publish to Pub/Sub on `jobs.onCreate`.
@@ -172,10 +192,10 @@ service firebase.storage {
 - Performance: keep `width=960`, `stride=2` as defaults; consider `fast` option for larger stride.
 - Cleanup: daily job deletes completed/failed `jobs` and uploaded user videos older than 24 hours (ephemeral policy).
 
-## Mapping to Existing Code
-- Use `analyze_drill(video_path)` directly from `drill_feedback.py`.
-- Use `generate_summary_with_gemini(raw)` from `parent_feedback_agent.py`.
-- Use `generate_sections(raw)` from `improvement_coach_agent.py`.
+## Mapping to Current Code
+- Use `analyze_drill(video_path)` from `analysis.drill_feedback`.
+- Use `generate_summary_with_gemini(raw)` from `agents.parent_feedback_agent`.
+- Use `generate_sections(raw)` from `agents.improvement_coach_agent`.
 - Avoid writing local files in worker; write results to Firestore instead.
 
 ## iOS Listener Notes
