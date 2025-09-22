@@ -183,19 +183,7 @@ def wrist_speed_series(series: Dict[str, List[Optional[Tuple[float, float, float
     best_vx = np.where(is_left_best, lvx, rvx)
     return best_vx, best_sp, is_left_best.astype(np.bool_), lvalid, rvalid
 
-def detect_phases(times: List[float], wrist_vx: np.ndarray, wrist_speed: np.ndarray) -> Tuple[Tuple[int, int], Tuple[int, int]]:
-    if len(times) == 0:
-        return (0, 0), (0, 0)
-    # shot peak by wrist speed
-    peak_idx = int(np.argmax(wrist_speed)) if wrist_speed.size else 0
-    # control: continuous negative vx segment before the peak
-    i = peak_idx
-    start = max(0, i - 1)
-    while start > 0 and wrist_vx[start] <= 0:
-        start -= 1
-    control = (max(0, start), max(0, peak_idx - 1))
-    shot = (peak_idx, min(len(times) - 1, peak_idx + 3))
-    return control, shot
+ 
 
 
 # -------------------------------
@@ -256,16 +244,37 @@ def window_for_peak(i: int, wrist_vx: np.ndarray, n: int, fps: float, stride: in
  
 
 
-def analyze_drill(video_path: str) -> Dict:
+def _normalize_video(video_path: str) -> str:
+    """Normalize video using FFmpeg and return the path to use for analysis.
+    
+    Args:
+        video_path: Path to the input video file
+        
+    Returns:
+        Path to normalized video if successful, otherwise original path
+    """
     # Allow worker to control temp/output directory via PB_WORK_DIR
     base_dir = os.getenv("PB_WORK_DIR", "videos/processed")
     norm_path = str(Path(base_dir) / (Path(video_path).stem + "_norm.mp4"))
     run_ffmpeg_normalize(video_path, norm_path, fps=30, width=960)
     use_path = norm_path if Path(norm_path).exists() else video_path
+    return use_path
 
+
+def _extract_pose_features(video_path: str, stride: int = 2) -> Tuple:
+    """Extract pose landmarks and compute all derived features.
+    
+    Args:
+        video_path: Path to the video file
+        stride: Frame stride for pose extraction
+        
+    Returns:
+        Tuple containing all computed features:
+        (times, pose_series, fps, total_frames, duration_sec, knees, wrist_vx, 
+         wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y)
+    """
     # Pose time series (strided for speed)
-    stride = 2
-    times, pose_series, fps, total_frames = pose_time_series(use_path, stride=stride)
+    times, pose_series, fps, total_frames = pose_time_series(video_path, stride=stride)
     duration_sec = float(total_frames) / max(1.0, fps) if total_frames else (times[-1] if times else 0.0)
 
     # Knee angle series and wrist speeds
@@ -326,7 +335,33 @@ def analyze_drill(video_path: str) -> Dict:
         else:
             active_wrist_y.append(None)
             active_shoulder_y.append(None)
+    
+    return (times, pose_series, fps, total_frames, duration_sec, knees, wrist_vx, 
+            wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y)
 
+
+def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees: List[Optional[float]], 
+                              wrist_vx: np.ndarray, wrist_speed: np.ndarray, dominant_valid: np.ndarray,
+                              hip_vx: np.ndarray, active_wrist_y: List[Optional[float]], 
+                              active_shoulder_y: List[Optional[float]], torso_height: List[Optional[float]]) -> List[Dict]:
+    """Detect shot peaks and analyze each shot's metrics.
+    
+    Args:
+        times: Time series array
+        fps: Frame rate
+        stride: Frame stride used for analysis
+        knees: Knee angle series
+        wrist_vx: Wrist velocity in x direction
+        wrist_speed: Wrist speed magnitude
+        dominant_valid: Validity mask for dominant wrist
+        hip_vx: Hip velocity in x direction  
+        active_wrist_y: Y coordinates of active wrist
+        active_shoulder_y: Y coordinates of active shoulder
+        torso_height: Torso height measurements
+        
+    Returns:
+        List of shot event dictionaries with metrics
+    """
     # Multi-shot detection (stricter thresholds and min peak height)
     peak_idxs = find_shot_peaks(
         wrist_speed, fps=fps, stride=stride, min_sep_s=2.0, thresh_z=1.5, min_height_frac=0.2
@@ -438,8 +473,21 @@ def analyze_drill(video_path: str) -> Dict:
                 "window": list(shot_idx),
             }
         })
-    def idx_to_time(i: int) -> float:
-        return float(i * stride) / max(1.0, fps)
+    return shot_events
+
+
+def _format_analysis_results(video_path: str, fps: float, duration_sec: float, shot_events: List[Dict]) -> Dict:
+    """Format the final analysis results dictionary.
+    
+    Args:
+        video_path: Original video file path
+        fps: Frame rate
+        duration_sec: Video duration in seconds  
+        shot_events: List of analyzed shot events
+        
+    Returns:
+        Final formatted results dictionary
+    """
     # Legacy top-level (first shot) for backward compatibility
     first = shot_events[0] if shot_events else None
     return {
@@ -457,6 +505,39 @@ def analyze_drill(video_path: str) -> Dict:
             "control_smoothness": first["control_smoothness"],
         }) or {},
     }
+
+
+def analyze_drill(video_path: str) -> Dict:
+    """Analyze hockey drill video and return metrics for detected shots.
+    
+    This is the main entry point that orchestrates the entire analysis pipeline:
+    1. Video normalization via FFmpeg
+    2. Pose feature extraction via MediaPipe
+    3. Shot detection and metric computation
+    4. Result formatting for JSON output
+    
+    Args:
+        video_path: Path to the input video file
+        
+    Returns:
+        Dictionary containing analysis results with shot metrics
+    """
+    # Video normalization
+    use_path = _normalize_video(video_path)
+
+    # Extract pose features and compute derived data
+    stride = 2
+    (times, pose_series, fps, total_frames, duration_sec, knees, wrist_vx, 
+     wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y) = _extract_pose_features(use_path, stride)
+
+    # Detect and analyze shots
+    shot_events = _detect_and_analyze_shots(
+        times, fps, stride, knees, wrist_vx, wrist_speed, dominant_valid, 
+        hip_vx, active_wrist_y, active_shoulder_y, torso_height
+    )
+
+    # Format final results
+    return _format_analysis_results(video_path, fps, duration_sec, shot_events)
 
 
 def main():

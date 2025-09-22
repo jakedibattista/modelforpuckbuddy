@@ -3,10 +3,10 @@
     "source": "functions"
   },
   "firestore": {
-    "rules": "firebase.rules"
+    "rules": "firebase/firestore.rules"
   },
   "storage": {
-    "rules": "storage.rules"
+    "rules": "firebase/storage.rules"
   }
 }
 

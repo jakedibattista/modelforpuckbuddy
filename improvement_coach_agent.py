@@ -12,16 +12,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-try:
-    from dotenv import load_dotenv  # type: ignore
-    load_dotenv()
-except Exception:
-    pass
+from utils.config import load_env
+from utils.io import load_json_file
+load_env()
 
 try:
     from google import genai  # type: ignore
@@ -29,9 +26,7 @@ except Exception as e:
     raise RuntimeError("google-genai client not installed. pip install google-genai") from e
 
 
-def load_json(p: Path) -> Dict[str, Any]:
-    with p.open("r") as f:
-        return json.load(f)
+ 
 
 
 def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
@@ -161,7 +156,7 @@ def main() -> None:
     p = Path(args.json_path)
     if not p.exists():
         raise FileNotFoundError(p)
-    raw = load_json(p)
+    raw = load_json_file(p)
     text = generate_sections(raw)
     print(text)
 
