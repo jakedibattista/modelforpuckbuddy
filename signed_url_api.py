@@ -93,6 +93,71 @@ def create_app() -> Flask:
             logger.exception("Failed to create download URL")
             return jsonify({"error": str(exc)}), 500
 
+    @app.route("/api/analyze-video", methods=["POST"])
+    def analyze_video_simple() -> tuple:
+        """Simple endpoint: upload video, get analysis results directly."""
+        payload = request.get_json() or {}
+        user_id = payload.get("user_id")
+        storage_path = payload.get("storage_path")
+        
+        if not user_id or not storage_path:
+            return jsonify({"error": "user_id and storage_path are required"}), 400
+            
+        try:
+            manager = get_manager()
+            
+            # Create job and wait for completion
+            job_id = manager.create_analysis_job(user_id, storage_path)
+            logger.info(f"Created job {job_id}, waiting for completion...")
+            
+            # Poll for completion (with timeout)
+            import time
+            timeout = 300  # 5 minutes max
+            start_time = time.time()
+            
+            while time.time() - start_time < timeout:
+                job_doc = manager.db.collection("jobs").document(job_id).get()
+                if job_doc.exists:
+                    job_data = job_doc.to_dict()
+                    status = job_data.get("status")
+                    
+                    if status == "completed":
+                        # Get the results directly
+                        result_urls = job_data.get("result_urls", {})
+                        parent_url = result_urls.get("parent_summary_url")
+                        coach_url = result_urls.get("coach_summary_url")
+                        
+                        # Download the text content
+                        parent_summary = ""
+                        coach_summary = ""
+                        
+                        if parent_url:
+                            parent_summary = manager.download_text_from_signed_url(parent_url)
+                        if coach_url:
+                            coach_summary = manager.download_text_from_signed_url(coach_url)
+                            
+                        return jsonify({
+                            "success": True,
+                            "analysis": {
+                                "parent_summary": parent_summary,
+                                "coach_summary": coach_summary,
+                                "job_id": job_id
+                            }
+                        })
+                    elif status == "failed":
+                        error_msg = job_data.get("error", "Analysis failed")
+                        return jsonify({"error": f"Analysis failed: {error_msg}"}), 500
+                        
+                # Still processing, wait a bit
+                time.sleep(10)
+                
+            # Timeout
+            return jsonify({"error": "Analysis timeout - please try again"}), 408
+            
+        except Exception as exc:
+            logger.exception("Failed to analyze video")
+            return jsonify({"error": str(exc)}), 500
+
     @app.route("/api/results/<user_id>", methods=["GET"])
     def list_results(user_id: str):
         limit = int(request.args.get("limit", 10))

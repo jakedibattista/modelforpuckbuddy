@@ -264,6 +264,20 @@ class FirebaseStorageManager:
 
         return list(result_sessions.values())
 
+    def download_text_from_signed_url(self, signed_url: str) -> str:
+        """Download text content from a signed URL."""
+        try:
+            # Create SSL context that doesn't verify certificates for Firebase Storage
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            with urllib.request.urlopen(signed_url, context=ssl_context) as response:
+                content = response.read().decode('utf-8')
+                return content
+        except Exception as exc:
+            raise RuntimeError(f"Failed to download from signed URL: {exc}") from exc
+
     def cleanup_old_files(self, user_id: str, days_old: int = 30) -> int:
         cutoff = datetime.now() - timedelta(days=days_old)
         prefix = f"users/{user_id}/"
