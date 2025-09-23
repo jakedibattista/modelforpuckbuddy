@@ -30,12 +30,10 @@ modelforpuckbuddy/
   tests/                   # Testing utilities
     test_complete_signed_url_workflow.py # End-to-end signed URL test
   helpfuldocs/             # Guides and architecture notes
-    HOCKEY_VIDEO_TESTING_GUIDE.md
-    ARCHITECTURE.md        # End-to-end design with signed URL focus
-    IOS_INTEGRATION.md     # iOS implementation guide
-    FIREBASE_SIGNED_URL_INTEGRATION.md  # Production integration guide
-    MIGRATION_TO_SIGNED_URLS.md        # Migration strategy
-    QUESTIONS_FOR_CONSIDERATION.md
+    API_GUIDE.md           # Complete API integration guide
+    IOS_INTEGRATION.md     # iOS/React Native implementation guide
+    ARCHITECTURE.md        # System design and workflow details
+    HOCKEY_VIDEO_TESTING_GUIDE.md  # Local testing and development
   signed_url_api.py        # Flask backend API for signed URL endpoints
   app.py                   # Cloud Run entrypoint for backend API
   requirements.txt         # Dependencies for Cloud Run deployment
@@ -79,9 +77,9 @@ The backend API is deployed to Cloud Run and ready for production use:
 ### Available Endpoints:
 - `GET /health` - Service health check
 - `POST /api/upload-url` - Generate signed URL for video upload
-- `POST /api/submit-video` - Create analysis job
-- `POST /api/download-url` - Generate signed URL for file download
-- `GET /api/results/{user_id}` - List user's analysis results
+- `POST /api/analyze-video` - ⭐ **Simple**: Upload video and get analysis results directly
+- `POST /api/submit-video` - Create analysis job (advanced workflow)
+- `GET /api/results/{user_id}` - List user's analysis results (advanced workflow)
 
 ### Testing the deployment:
 ```bash
@@ -94,16 +92,29 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload
   -d '{"user_id":"test-user","filename":"test.mp4"}'
 ```
 
-## Firebase Signed URL Integration
-For complete app integration with secure video uploads and result delivery:
+## Quick Integration Guide
 
+### Simple Approach (Recommended for most apps):
 ```bash
-# Test complete signed URL workflow
+# Test the simple workflow
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload-url \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","content_type":"video/mov"}'
+
+# Upload video using returned URL, then:
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyze-video \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","storage_path":"users/test123/..."}'
+```
+
+### Advanced Integration:
+```bash
+# Test complete signed URL workflow  
 cd tests
 python3 test_complete_signed_url_workflow.py "test_user_123" "../videos/input/kidshoot2.MOV"
 ```
 
-See `helpfuldocs/FIREBASE_SIGNED_URL_INTEGRATION.md` for complete integration guide.
+**📖 Documentation**: See `helpfuldocs/API_GUIDE.md` for complete integration examples.
 
 ## Cloud components
 - **Backend API** (`signed_url_api.py`) deployed to Cloud Run provides signed URL endpoints

@@ -1,12 +1,12 @@
 ## iOS Integration Guide: Upload → Analyze → Receive Feedback
 
-This comprehensive guide shows how your iOS app uploads a user video, creates a processing job, listens for real-time updates, handles background/push notifications, and recovers results if the app is closed.
+This guide shows how to integrate the Puck Buddy hockey analysis API into your iOS app.
 
-**Two Integration Options:**
-- **Option A**: Direct Firebase upload + Firestore results (Current implementation)
-- **Option B**: Signed URL upload + Signed URL results (Recommended for production)
+**📖 Quick Reference**: See `/helpfuldocs/API_GUIDE.md` for complete API documentation with JavaScript examples.
 
-Both options are supported. Option B provides better security and scalability.
+**Two Integration Approaches:**
+- **Simple**: Upload video → Get analysis results directly (recommended for most apps)
+- **Advanced**: More control with real-time progress updates and custom result handling
 
 ### Prerequisites & Setup
 
