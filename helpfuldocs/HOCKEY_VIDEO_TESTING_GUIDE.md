@@ -15,11 +15,17 @@ Note: The runtime stack is MediaPipe Pose + OpenCV + FFmpeg.
 
 ## Metrics Measured
 
-- Shots detected with timestamps
-- Knee bend: min angle during shot (degrees), score (0..1), validity
-- Hip drive: normalized (0..1) with good/bad flag
-- Wrist steadiness (formerly "control"): label derived from wrist-speed stability (smooth / mixed / jerky)
-- Follow-through (formerly "stick lift"): present, first_time_sec, peak_norm
+### Core Body Position Metrics at Shot Release:
+- **Shots detected** with timestamps
+- **Front knee bend**: angle during shot (degrees), score (0..1) - should be 90-110° for power
+- **Back leg extension**: should be 160-180° for drive through shot
+- **Hip drive**: normalized (0..1) with good/bad flag - measures forward drive
+- **Wrist steadiness**: label from pull-back stability (smooth / mixed / jerky)
+
+### Enhanced Form Analysis:
+- **Head position**: forward lean, eye level consistency, target facing
+- **Upper body square**: shoulder level, arm extension, target alignment  
+- **Lower body triangle**: front knee bend, back leg extension (no stance width tracking)
 
 ## Explanation of Outputs (Plain English)
 
@@ -40,23 +46,31 @@ This section explains how we create the JSON and what each number means, without
 - Shot window (the release): The moment right around the wrist speed burst.
 
 5) What each metric means
-- Knee bend
-  - We look during the shot window. We estimate the knee angle in degrees (smaller angle = deeper bend). For example, 100° is “deep”, 150° is “shallow”.
-  - We also give a score from 0 to 1: 1.0 means very deep bend (≤100°), 0.0 means very shallow (≥140°), with a smooth scale in between. “valid: true” means we saw enough knee points to trust the number.
-- Hip drive
-  - We measure how strongly the hips move forward at the shot moment. We convert it to a 0 to 1 scale by comparing to fast movements elsewhere in the clip.
-  - We also mark “hip_drive_good: true” if the forward drive is strong (≥0.3). Higher is better.
-- Wrist steadiness
-  - We check how steady the wrist speed is during the control (pull-back) window.
-  - We present this to users as a label: “smooth” (≥0.6), “mixed” (0.31–0.59), or “jerky” (≤0.3).
-- Follow-through
-  - We see if the wrist rises above the shoulder during the shot (a simple proxy for stick follow-through) by more than 15% of torso height.
-  - We report whether it was present, when it first happened, and the “peak_norm” height (how high relative to your torso). Rough guide: ≥0.3 shows a clear follow-through.
+
+### Core Position Metrics:
+- **Front knee bend** (shooting leg)
+  - We measure the front knee angle during shot release. Smaller angle = deeper bend. Example: 100° is "deep", 168° is "shallow".
+  - Good shooting form: 90-110°. Score from 0 to 1: 1.0 = very deep (≤100°), 0.0 = very shallow (≥140°).
+- **Back leg extension** (support leg)  
+  - We measure how straight the back leg is during shot release. Should be 160-180° for proper drive.
+  - Angles <150° indicate "too bent" - player not driving through properly.
+- **Hip drive**
+  - We measure forward hip movement during shot release. Scale 0 to 1 based on movement in the clip.
+  - "hip_drive_good: true" if ≥0.3. Higher = more power through the shot.
+- **Wrist steadiness**
+  - How steady the wrist moves during pull-back. Smooth setup = better shot consistency.
+  - We present this to users as a label: "smooth" (≥0.6), "mixed" (0.31–0.59), or "jerky" (≤0.3).
+
+### Enhanced Form Analysis:
+- **Head position**: Measures forward lean, eye level consistency, and target-facing direction
+- **Upper body square**: Shoulder level, arm extension, and target alignment for proper shooting form
+- **Lower body triangle**: Front knee bend and back leg extension for optimal power transfer
 
 6) How to read the JSON at a glance
-- “shots” is a list where each item is one shot with its time and metrics.
-- Look for: knee_bend_min_deg (lower = deeper), hip_drive (closer to 1 is stronger drive), control_smoothness (used internally to label “wrist steadiness”), and stick_lift.present (true/false).
-- A great rep usually has: knee_bend_min_deg ≤ 110°, hip_drive ≥ 0.3, wrist steadiness = smooth, and a sensible follow-through.
+- "shots" is a list where each item is one shot with its time and metrics.
+- **Core metrics**: `shot_time_sec`, `hip_drive` (≥0.3 = good), `control_smoothness` (generates wrist steadiness label)
+- **Form analysis**: `head_position.*`, `upper_body_square.*`, `lower_body_triangle.front_knee_bend_deg` & `back_leg_extension_deg`
+- **Great rep indicators**: front knee ≤110°, back leg 160-180°, hip drive ≥0.3, head/upper body metrics ≥0.8
 
 ## Step-by-Step Testing Instructions
 
@@ -84,7 +98,7 @@ cp /path/to/your/hockey_video.mp4 videos/input/
 
 ```bash
 # Run analyze_drill from the packaged module
-python -c "from analysis.drill_feedback import analyze_drill; import json; print(json.dumps(analyze_drill('videos/input/your_clip.mov'), indent=2))"
+python -c "from analysis.shooting_drill_feedback import analyze_drill; import json; print(json.dumps(analyze_drill('videos/input/your_clip.mov'), indent=2))"
 ```
 
 The script will automatically:
@@ -107,7 +121,7 @@ python -m agents.parent_feedback_agent results/drill/<your_video>_drill_feedback
 ```
 
 Output: First line with shot times, then one bullet per shot:
-“time — knee bend XXX°, hip drive H.HHH (good/not good), wrist steadiness: LABEL, follow-through: yes/no”.
+"time — front knee bend XXX°, hip drive H.HHH (good/not good), wrist steadiness: LABEL, head position: excellent/good/needs work, back leg: XXX°".
 
 - Improvement coaching sections (What went well / What to work on)
 
@@ -133,11 +147,12 @@ Results will be saved in `results/drill/`:
       "shot_time_sec": 10.133,
       "knee_bend_min_deg": 109.4,
       "knee_bend_score": 0.765,
-      "knee_bend_valid": true,
       "hip_drive": 0.408,
       "hip_drive_good": true,
       "control_smoothness": 0.573,
-      "stick_lift": {"present": true, "first_time_sec": 10.2, "peak_norm": 0.22}
+      "head_position": {"forward_lean": 0.943, "eye_level": 0.991, "target_facing": 0.899},
+      "upper_body_square": {"shoulder_level": 0.93, "arm_extension": 0.917, "target_alignment": 0.928},
+      "lower_body_triangle": {"front_knee_bend_deg": 168.9, "back_leg_extension_deg": 151.9}
     }
   ]
 }

@@ -1,6 +1,6 @@
 ## PuckBuddy Processing Architecture (Option A)
 
-This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/drill_feedback.py`, `agents/parent_feedback_agent.py`, and `agents/improvement_coach_agent.py`.
+This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/shooting_drill_feedback.py`, `agents/parent_feedback_agent.py`, and `agents/improvement_coach_agent.py`.
 
 ### Goals
 - **Reliability**: Avoid client timeouts; handle retries; isolate heavy compute.
@@ -28,7 +28,7 @@ Cloud Function (enqueue)
 Cloud Run worker
   Receives Pub/Sub push with { jobId }.
   Loads Firestore doc, sets status='processing', progress≈10.
-  Downloads video from Storage, sets PB_WORK_DIR, runs `analysis.drill_feedback.analyze_drill()`.
+  Downloads video from Storage, sets PB_WORK_DIR, runs `analysis.shooting_drill_feedback.analyze_drill()`.
   Writes drill results into jobs/{jobId}.drill and progress≈70.
   Generates summaries with agents (status='summarizing', progress≈80).
   Writes parent_summary, coach_summary, then status='completed', progress=100.
@@ -193,7 +193,7 @@ service firebase.storage {
 - Cleanup: daily job deletes completed/failed `jobs` and uploaded user videos older than 24 hours (ephemeral policy).
 
 ## Mapping to Current Code
-- Use `analyze_drill(video_path)` from `analysis.drill_feedback`.
+- Use `analyze_drill(video_path)` from `analysis.shooting_drill_feedback`.
 - Use `generate_summary_with_gemini(raw)` from `agents.parent_feedback_agent`.
 - Use `generate_sections(raw)` from `agents.improvement_coach_agent`.
 - Avoid writing local files in worker; write results to Firestore instead.

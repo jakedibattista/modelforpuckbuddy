@@ -1,6 +1,7 @@
-# Hockey Drill Feedback
+# Hockey Shooting Drill Feedback
 
 Runtime: MediaPipe Pose + OpenCV + FFmpeg.
+Enhanced form analysis: head position, upper body square, lower body triangle.
 Agents: parent per-shot report, improvement coach sections (Gemini).
 
 ## Project layout
@@ -8,7 +9,7 @@ Agents: parent per-shot report, improvement coach sections (Gemini).
 modelforpuckbuddy/
   analysis/                # Pose analysis
     __init__.py
-    drill_feedback.py      # analyze_drill(video_path) → dict
+    shooting_drill_feedback.py  # analyze_drill(video_path) → dict
   agents/                  # Text-generation agents
     __init__.py
     parent_feedback_agent.py        # per-shot parent report
@@ -60,7 +61,7 @@ python -m agents.parent_feedback_agent results/drill/kidshoot4_drill_feedback.js
 
 To generate an analysis JSON from a local video, install analysis dependencies (see `worker/requirements.txt` for reference: mediapipe, opencv-python-headless, numpy, etc.) and run:
 ```bash
-python -c "from analysis.drill_feedback import analyze_drill; import json; print(json.dumps(analyze_drill('videos/input/your_clip.mov'), indent=2))"
+python -c "from analysis.shooting_drill_feedback import analyze_drill; import json; print(json.dumps(analyze_drill('videos/input/your_clip.mov'), indent=2))"
 ```
 
 ## Cloud components

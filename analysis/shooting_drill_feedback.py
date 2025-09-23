@@ -76,7 +76,12 @@ def pose_time_series(video_path: str, stride: int = 2) -> Tuple[List[float], Dic
     series: Dict[str, List[Optional[Tuple[float, float, float]]]] = {
         'LEFT_SHOULDER': [], 'RIGHT_SHOULDER': [],
         'LEFT_HIP': [], 'RIGHT_HIP': [], 'LEFT_KNEE': [], 'RIGHT_KNEE': [],
-        'LEFT_ANKLE': [], 'RIGHT_ANKLE': [], 'LEFT_WRIST': [], 'RIGHT_WRIST': []
+        'LEFT_ANKLE': [], 'RIGHT_ANKLE': [], 'LEFT_WRIST': [], 'RIGHT_WRIST': [],
+        # Enhanced landmarks for form analysis
+        'NOSE': [], 'LEFT_EYE': [], 'RIGHT_EYE': [],
+        'LEFT_ELBOW': [], 'RIGHT_ELBOW': [],
+        'LEFT_HEEL': [], 'RIGHT_HEEL': [],
+        'LEFT_FOOT_INDEX': [], 'RIGHT_FOOT_INDEX': []
     }
     with mp_pose.Pose(static_image_mode=False, model_complexity=1, enable_segmentation=False,
                       min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
@@ -100,6 +105,7 @@ def pose_time_series(video_path: str, stride: int = 2) -> Tuple[List[float], Dic
                 lm = res.pose_landmarks.landmark
                 def get_lm(i: int) -> Tuple[float, float, float]:
                     return (float(lm[i].x) * w, float(lm[i].y) * h, float(lm[i].visibility))
+                # Core landmarks (existing)
                 add('LEFT_SHOULDER', get_lm(mp_pose.PoseLandmark.LEFT_SHOULDER.value))
                 add('RIGHT_SHOULDER', get_lm(mp_pose.PoseLandmark.RIGHT_SHOULDER.value))
                 add('LEFT_HIP', get_lm(mp_pose.PoseLandmark.LEFT_HIP.value))
@@ -110,6 +116,16 @@ def pose_time_series(video_path: str, stride: int = 2) -> Tuple[List[float], Dic
                 add('RIGHT_ANKLE', get_lm(mp_pose.PoseLandmark.RIGHT_ANKLE.value))
                 add('LEFT_WRIST', get_lm(mp_pose.PoseLandmark.LEFT_WRIST.value))
                 add('RIGHT_WRIST', get_lm(mp_pose.PoseLandmark.RIGHT_WRIST.value))
+                # Enhanced landmarks for form analysis
+                add('NOSE', get_lm(mp_pose.PoseLandmark.NOSE.value))
+                add('LEFT_EYE', get_lm(mp_pose.PoseLandmark.LEFT_EYE.value))
+                add('RIGHT_EYE', get_lm(mp_pose.PoseLandmark.RIGHT_EYE.value))
+                add('LEFT_ELBOW', get_lm(mp_pose.PoseLandmark.LEFT_ELBOW.value))
+                add('RIGHT_ELBOW', get_lm(mp_pose.PoseLandmark.RIGHT_ELBOW.value))
+                add('LEFT_HEEL', get_lm(mp_pose.PoseLandmark.LEFT_HEEL.value))
+                add('RIGHT_HEEL', get_lm(mp_pose.PoseLandmark.RIGHT_HEEL.value))
+                add('LEFT_FOOT_INDEX', get_lm(mp_pose.PoseLandmark.LEFT_FOOT_INDEX.value))
+                add('RIGHT_FOOT_INDEX', get_lm(mp_pose.PoseLandmark.RIGHT_FOOT_INDEX.value))
             else:
                 for k in series.keys():
                     add(k, None)
@@ -184,6 +200,213 @@ def wrist_speed_series(series: Dict[str, List[Optional[Tuple[float, float, float
     return best_vx, best_sp, is_left_best.astype(np.bool_), lvalid, rvalid
 
  
+
+
+# -------------------------------
+# Enhanced Form Analysis Functions
+# -------------------------------
+
+def _detect_shooting_side(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]]) -> str:
+    """Detect if player is a left or right handed shooter based on wrist movement patterns."""
+    left_wrist = pose_series.get('LEFT_WRIST', [])
+    right_wrist = pose_series.get('RIGHT_WRIST', [])
+    
+    # Count valid frames for each wrist
+    left_valid = sum(1 for w in left_wrist if w and w[2] > 0.5)
+    right_valid = sum(1 for w in right_wrist if w and w[2] > 0.5)
+    
+    # Calculate average movement range for each wrist
+    left_movement = 0.0
+    right_movement = 0.0
+    
+    if left_valid > 5:
+        valid_left = [w for w in left_wrist if w and w[2] > 0.5]
+        left_xs = [w[0] for w in valid_left]
+        left_movement = max(left_xs) - min(left_xs) if left_xs else 0.0
+    
+    if right_valid > 5:
+        valid_right = [w for w in right_wrist if w and w[2] > 0.5]
+        right_xs = [w[0] for w in valid_right]
+        right_movement = max(right_xs) - min(right_xs) if right_xs else 0.0
+    
+    # The top hand (more movement) indicates shooting side
+    return 'RIGHT' if right_movement > left_movement else 'LEFT'
+
+def _determine_front_back_legs(shooting_side: str, pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]]) -> Tuple[str, str]:
+    """Determine front and back legs based on shooting side and foot positioning."""
+    # For hockey shooting stance:
+    # Right-handed shooter: left leg front, right leg back
+    # Left-handed shooter: right leg front, left leg back
+    if shooting_side == 'RIGHT':
+        return 'LEFT', 'RIGHT'  # front_leg, back_leg
+    else:
+        return 'RIGHT', 'LEFT'  # front_leg, back_leg
+
+def _calculate_head_position_metrics(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]]) -> List[Dict]:
+    """Calculate head position and eye level metrics for each frame."""
+    nose = pose_series.get('NOSE', [])
+    left_eye = pose_series.get('LEFT_EYE', [])
+    right_eye = pose_series.get('RIGHT_EYE', [])
+    left_shoulder = pose_series.get('LEFT_SHOULDER', [])
+    right_shoulder = pose_series.get('RIGHT_SHOULDER', [])
+    
+    head_metrics = []
+    
+    for i in range(len(nose)):
+        metrics = {
+            'forward_lean': None,
+            'eye_level': None,
+            'head_direction': None
+        }
+        
+        n = nose[i] if i < len(nose) else None
+        le = left_eye[i] if i < len(left_eye) else None
+        re = right_eye[i] if i < len(right_eye) else None
+        ls = left_shoulder[i] if i < len(left_shoulder) else None
+        rs = right_shoulder[i] if i < len(right_shoulder) else None
+        
+        if n and ls and rs and n[2] > 0.5 and ls[2] > 0.5 and rs[2] > 0.5:
+            # Forward lean: nose position relative to shoulder line
+            shoulder_center_x = (ls[0] + rs[0]) * 0.5
+            forward_lean = (n[0] - shoulder_center_x) / abs(ls[0] - rs[0] + 1e-6)
+            metrics['forward_lean'] = float(np.clip(abs(forward_lean), 0.0, 1.0))
+        
+        if le and re and le[2] > 0.5 and re[2] > 0.5:
+            # Eye level consistency (both eyes at same height)
+            eye_level_diff = abs(le[1] - re[1]) / (abs(le[1] + re[1]) * 0.5 + 1e-6)
+            metrics['eye_level'] = float(np.clip(1.0 - eye_level_diff, 0.0, 1.0))
+            
+            # Head direction (eyes pointing toward target)
+            eye_center_x = (le[0] + re[0]) * 0.5
+            if ls and rs and ls[2] > 0.5 and rs[2] > 0.5:
+                shoulder_center_x = (ls[0] + rs[0]) * 0.5
+                head_direction = (eye_center_x - shoulder_center_x) / abs(ls[0] - rs[0] + 1e-6)
+                metrics['head_direction'] = float(np.clip(abs(head_direction), 0.0, 1.0))
+        
+        head_metrics.append(metrics)
+    
+    return head_metrics
+
+def _calculate_upper_body_square_metrics(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]]) -> List[Dict]:
+    """Calculate upper body 'square' formation metrics for each frame."""
+    left_shoulder = pose_series.get('LEFT_SHOULDER', [])
+    right_shoulder = pose_series.get('RIGHT_SHOULDER', [])
+    left_elbow = pose_series.get('LEFT_ELBOW', [])
+    right_elbow = pose_series.get('RIGHT_ELBOW', [])
+    left_wrist = pose_series.get('LEFT_WRIST', [])
+    right_wrist = pose_series.get('RIGHT_WRIST', [])
+    
+    upper_body_metrics = []
+    
+    for i in range(max(len(left_shoulder), len(right_shoulder))):
+        metrics = {
+            'shoulder_level': None,
+            'arm_extension': None,
+            'target_alignment': None
+        }
+        
+        ls = left_shoulder[i] if i < len(left_shoulder) else None
+        rs = right_shoulder[i] if i < len(right_shoulder) else None
+        le = left_elbow[i] if i < len(left_elbow) else None
+        re = right_elbow[i] if i < len(right_elbow) else None
+        lw = left_wrist[i] if i < len(left_wrist) else None
+        rw = right_wrist[i] if i < len(right_wrist) else None
+        
+        # Shoulder level (both shoulders at same height)
+        if ls and rs and ls[2] > 0.5 and rs[2] > 0.5:
+            shoulder_diff = abs(ls[1] - rs[1]) / (abs(ls[1] + rs[1]) * 0.5 + 1e-6)
+            metrics['shoulder_level'] = float(np.clip(1.0 - shoulder_diff, 0.0, 1.0))
+        
+        # Arm extension (elbows extended)
+        arm_extensions = []
+        for shoulder, elbow, wrist in [(ls, le, lw), (rs, re, rw)]:
+            if shoulder and elbow and wrist and min(shoulder[2], elbow[2], wrist[2]) > 0.5:
+                # Calculate arm extension angle
+                arm_angle = _angle_deg((shoulder[0], shoulder[1]), (elbow[0], elbow[1]), (wrist[0], wrist[1]))
+                # Good extension is close to 180 degrees
+                extension_score = 1.0 - abs(180.0 - arm_angle) / 180.0
+                arm_extensions.append(max(0.0, extension_score))
+        
+        if arm_extensions:
+            metrics['arm_extension'] = float(np.mean(arm_extensions))
+        
+        # Target alignment (arms pointing same direction)
+        if ls and rs and lw and rw and min(ls[2], rs[2], lw[2], rw[2]) > 0.5:
+            # Calculate arm directions
+            left_arm_vector = (lw[0] - ls[0], lw[1] - ls[1])
+            right_arm_vector = (rw[0] - rs[0], rw[1] - rs[1])
+            
+            # Normalize vectors
+            left_norm = np.linalg.norm(left_arm_vector) + 1e-6
+            right_norm = np.linalg.norm(right_arm_vector) + 1e-6
+            left_unit = (left_arm_vector[0] / left_norm, left_arm_vector[1] / left_norm)
+            right_unit = (right_arm_vector[0] / right_norm, right_arm_vector[1] / right_norm)
+            
+            # Calculate alignment (dot product)
+            alignment = np.dot(left_unit, right_unit)
+            metrics['target_alignment'] = float(np.clip((alignment + 1.0) * 0.5, 0.0, 1.0))
+        
+        upper_body_metrics.append(metrics)
+    
+    return upper_body_metrics
+
+def _calculate_lower_body_triangle_metrics(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]], 
+                                          front_leg: str, back_leg: str) -> List[Dict]:
+    """Calculate lower body 'triangle' formation metrics for each frame."""
+    front_hip = pose_series.get(f'{front_leg}_HIP', [])
+    front_knee = pose_series.get(f'{front_leg}_KNEE', [])
+    front_ankle = pose_series.get(f'{front_leg}_ANKLE', [])
+    front_heel = pose_series.get(f'{front_leg}_HEEL', [])
+    
+    back_hip = pose_series.get(f'{back_leg}_HIP', [])
+    back_knee = pose_series.get(f'{back_leg}_KNEE', [])
+    back_ankle = pose_series.get(f'{back_leg}_ANKLE', [])
+    back_heel = pose_series.get(f'{back_leg}_HEEL', [])
+    
+    left_foot = pose_series.get('LEFT_FOOT_INDEX', [])
+    right_foot = pose_series.get('RIGHT_FOOT_INDEX', [])
+    
+    lower_body_metrics = []
+    
+    for i in range(max(len(front_hip), len(back_hip))):
+        metrics = {
+            'front_knee_bend': None,
+            'back_leg_extension': None,
+            'stance_width': None
+        }
+        
+        fh = front_hip[i] if i < len(front_hip) else None
+        fk = front_knee[i] if i < len(front_knee) else None
+        fa = front_ankle[i] if i < len(front_ankle) else None
+        
+        bh = back_hip[i] if i < len(back_hip) else None
+        bk = back_knee[i] if i < len(back_knee) else None
+        ba = back_ankle[i] if i < len(back_ankle) else None
+        
+        lf = left_foot[i] if i < len(left_foot) else None
+        rf = right_foot[i] if i < len(right_foot) else None
+        
+        # Front knee bend
+        if fh and fk and fa and min(fh[2], fk[2], fa[2]) > 0.5:
+            front_angle = _angle_deg((fh[0], fh[1]), (fk[0], fk[1]), (fa[0], fa[1]))
+            metrics['front_knee_bend'] = front_angle
+        
+        # Back leg extension
+        if bh and bk and ba and min(bh[2], bk[2], ba[2]) > 0.5:
+            back_angle = _angle_deg((bh[0], bh[1]), (bk[0], bk[1]), (ba[0], ba[1]))
+            metrics['back_leg_extension'] = back_angle
+        
+        # Stance width (distance between feet relative to hip width)
+        if lf and rf and lf[2] > 0.5 and rf[2] > 0.5:
+            foot_distance = np.hypot(lf[0] - rf[0], lf[1] - rf[1])
+            if fh and bh and fh[2] > 0.5 and bh[2] > 0.5:
+                hip_width = np.hypot(fh[0] - bh[0], fh[1] - bh[1])
+                stance_ratio = foot_distance / (hip_width + 1e-6)
+                metrics['stance_width'] = float(np.clip(stance_ratio, 0.0, 3.0))
+        
+        lower_body_metrics.append(metrics)
+    
+    return lower_body_metrics
 
 
 # -------------------------------
@@ -336,14 +559,25 @@ def _extract_pose_features(video_path: str, stride: int = 2) -> Tuple:
             active_wrist_y.append(None)
             active_shoulder_y.append(None)
     
+    # Enhanced form analysis
+    shooting_side = _detect_shooting_side(pose_series)
+    front_leg, back_leg = _determine_front_back_legs(shooting_side, pose_series)
+    head_metrics = _calculate_head_position_metrics(pose_series)
+    upper_body_metrics = _calculate_upper_body_square_metrics(pose_series)
+    lower_body_metrics = _calculate_lower_body_triangle_metrics(pose_series, front_leg, back_leg)
+    
     return (times, pose_series, fps, total_frames, duration_sec, knees, wrist_vx, 
-            wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y)
+            wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y,
+            shooting_side, front_leg, back_leg, head_metrics, upper_body_metrics, lower_body_metrics)
 
 
 def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees: List[Optional[float]], 
                               wrist_vx: np.ndarray, wrist_speed: np.ndarray, dominant_valid: np.ndarray,
                               hip_vx: np.ndarray, active_wrist_y: List[Optional[float]], 
-                              active_shoulder_y: List[Optional[float]], torso_height: List[Optional[float]]) -> List[Dict]:
+                              active_shoulder_y: List[Optional[float]], torso_height: List[Optional[float]],
+                              shooting_side: str, front_leg: str, back_leg: str,
+                              head_metrics: List[Dict], upper_body_metrics: List[Dict], 
+                              lower_body_metrics: List[Dict]) -> List[Dict]:
     """Detect shot peaks and analyze each shot's metrics.
     
     Args:
@@ -423,33 +657,36 @@ def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees
                 control_smoothness = 0.0
         else:
             control_smoothness = 0.0
-        # Stick lift detection within shot window: wrist above shoulder by threshold
-        def safe_get(lst: List[Optional[float]], s: int, e: int) -> np.ndarray:
-            seg = lst[s:e]
-            return np.array([v if v is not None else np.nan for v in seg], dtype=np.float64)
-        wr_y = safe_get(active_wrist_y, shot_idx[0], min(len(active_wrist_y), shot_idx[1]+1))
-        sh_y = safe_get(active_shoulder_y, shot_idx[0], min(len(active_shoulder_y), shot_idx[1]+1))
-        torso_seg = safe_get(torso_height, shot_idx[0], min(len(torso_height), shot_idx[1]+1))
-        # In image coords, smaller y means higher. Lift if shoulder_y - wrist_y > frac * torso_height
-        frac_thresh = 0.15
-        lift_amount = (sh_y - wr_y)  # positive when wrist is above shoulder
-        norm_thresh = frac_thresh * (torso_seg + 1e-6)
-        is_lift = lift_amount > norm_thresh
-        any_lift = bool(np.nanmax(is_lift.astype(np.float64)) == 1.0) if is_lift.size else False
-        # Peak normalized lift and first lift time
-        norm_lift = np.where(np.isfinite(torso_seg) & (torso_seg > 0), lift_amount / (torso_seg + 1e-6), np.nan)
-        peak_lift = float(np.nanmax(norm_lift)) if norm_lift.size else 0.0
-        # Find first True index where lift threshold is met
-        if np.any(is_lift):
-            true_indices = np.where(is_lift)[0]
-            first_lift_rel_idx = int(true_indices[0]) if true_indices.size > 0 else None
-        else:
-            first_lift_rel_idx = None
-        if first_lift_rel_idx is not None:
-            first_lift_idx = shot_idx[0] + first_lift_rel_idx
-            first_lift_time = float(first_lift_idx * stride) / max(1.0, fps)
-        else:
-            first_lift_time = None
+        # Focus on core body positions at point of release only
+        # Enhanced form analysis for shot window
+        shot_window_slice = slice(shot_idx[0], min(len(times), shot_idx[1]+1))
+        
+        # Average form metrics during shot window
+        shot_head_metrics = head_metrics[shot_window_slice]
+        shot_upper_metrics = upper_body_metrics[shot_window_slice]
+        shot_lower_metrics = lower_body_metrics[shot_window_slice]
+        
+        # Calculate averages for valid frames
+        def safe_average(metrics_list: List[Dict], key: str) -> Optional[float]:
+            values = [m[key] for m in metrics_list if m[key] is not None]
+            return float(np.mean(values)) if values else None
+        
+        # Head position metrics
+        head_forward_lean = safe_average(shot_head_metrics, 'forward_lean')
+        head_eye_level = safe_average(shot_head_metrics, 'eye_level')
+        head_direction = safe_average(shot_head_metrics, 'head_direction')
+        
+        # Upper body square metrics
+        shoulder_level = safe_average(shot_upper_metrics, 'shoulder_level')
+        arm_extension = safe_average(shot_upper_metrics, 'arm_extension')
+        target_alignment = safe_average(shot_upper_metrics, 'target_alignment')
+        
+        # Lower body triangle metrics  
+        front_knee_angles = [m['front_knee_bend'] for m in shot_lower_metrics if m['front_knee_bend'] is not None]
+        back_leg_angles = [m['back_leg_extension'] for m in shot_lower_metrics if m['back_leg_extension'] is not None]
+        front_knee_bend_deg = float(np.mean(front_knee_angles)) if front_knee_angles else None
+        back_leg_extension_deg = float(np.mean(back_leg_angles)) if back_leg_angles else None
+        
         # Times
         def idx_to_time(i: int) -> float:
             return float(i * stride) / max(1.0, fps)
@@ -458,19 +695,26 @@ def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees
         shot_t    = (idx_to_time(shot_idx[0]), idx_to_time(shot_idx[1]))
         shot_events.append({
             "shot_time_sec": round(shot_time, 3),
-            "control": {"frames": control_idx, "time_sec": control_t},
-            "shot":    {"frames": shot_idx,    "time_sec": shot_t},
+            # Keep legacy metrics for compatibility (agents still use)
             "knee_bend_min_deg": round(knee_bend_min, 1),
             "knee_bend_score": round(knee_bend_score, 3),
-            "knee_bend_valid": knee_bend_valid,
             "hip_drive": round(hip_drive_norm, 3),
             "hip_drive_good": hip_drive_good,
             "control_smoothness": round(control_smoothness, 3),
-            "stick_lift": {
-                "present": any_lift,
-                "first_time_sec": (round(first_lift_time, 3) if first_lift_time is not None else None),
-                "peak_norm": (round(peak_lift, 3) if np.isfinite(peak_lift) else 0.0),
-                "window": list(shot_idx),
+            # Enhanced form analysis (core metrics)
+            "head_position": {
+                "forward_lean": round(head_forward_lean, 3) if head_forward_lean is not None else None,
+                "eye_level": round(head_eye_level, 3) if head_eye_level is not None else None,
+                "target_facing": round(head_direction, 3) if head_direction is not None else None
+            },
+            "upper_body_square": {
+                "shoulder_level": round(shoulder_level, 3) if shoulder_level is not None else None,
+                "arm_extension": round(arm_extension, 3) if arm_extension is not None else None,
+                "target_alignment": round(target_alignment, 3) if target_alignment is not None else None
+            },
+            "lower_body_triangle": {
+                "front_knee_bend_deg": round(front_knee_bend_deg, 1) if front_knee_bend_deg is not None else None,
+                "back_leg_extension_deg": round(back_leg_extension_deg, 1) if back_leg_extension_deg is not None else None
             }
         })
     return shot_events
@@ -495,11 +739,10 @@ def _format_analysis_results(video_path: str, fps: float, duration_sec: float, s
         "fps": fps,
         "duration_est_sec": duration_sec,
         "shots": shot_events,
-        "phases": (first and {"control": first["control"], "shot": first["shot"]}) or {},
+        "phases": {},  # Removed - not used by agents
         "metrics": (first and {
             "knee_bend_min_deg": first["knee_bend_min_deg"],
             "knee_bend_score": first.get("knee_bend_score", 0.0),
-            "knee_bend_valid": first.get("knee_bend_valid", False),
             "hip_drive": first["hip_drive"],
             "hip_drive_good": first.get("hip_drive_good", False),
             "control_smoothness": first["control_smoothness"],
@@ -528,12 +771,14 @@ def analyze_drill(video_path: str) -> Dict:
     # Extract pose features and compute derived data
     stride = 2
     (times, pose_series, fps, total_frames, duration_sec, knees, wrist_vx, 
-     wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y) = _extract_pose_features(use_path, stride)
+     wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y,
+     shooting_side, front_leg, back_leg, head_metrics, upper_body_metrics, lower_body_metrics) = _extract_pose_features(use_path, stride)
 
     # Detect and analyze shots
     shot_events = _detect_and_analyze_shots(
         times, fps, stride, knees, wrist_vx, wrist_speed, dominant_valid, 
-        hip_vx, active_wrist_y, active_shoulder_y, torso_height
+        hip_vx, active_wrist_y, active_shoulder_y, torso_height,
+        shooting_side, front_leg, back_leg, head_metrics, upper_body_metrics, lower_body_metrics
     )
 
     # Format final results
@@ -560,5 +805,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 

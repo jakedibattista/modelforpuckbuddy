@@ -9,10 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy repo root modules needed by worker
-COPY drill_feedback.py /app/drill_feedback.py
-COPY parent_feedback_agent.py /app/parent_feedback_agent.py
-COPY improvement_coach_agent.py /app/improvement_coach_agent.py
+# Copy project packages needed by worker
+COPY analysis/ /app/analysis/
+COPY agents/ /app/agents/
 
 # Copy worker service
 COPY worker/requirements.txt /app/requirements.txt
