@@ -1,4 +1,4 @@
-## PuckBuddy Processing Architecture (Option A)
+## PuckBuddy Processing Architecture
 
 This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/shooting_drill_feedback.py`, `agents/parent_feedback_agent.py`, and `agents/improvement_coach_agent.py`.
 
@@ -6,15 +6,28 @@ This document describes the end-to-end design to let the iOS app send videos for
 - **Reliability**: Avoid client timeouts; handle retries; isolate heavy compute.
 - **Simplicity**: Minimal changes to current Python code; containerized worker.
 - **Real-time UX**: iOS listens to Firestore job document for status/results.
+- **Security**: Use signed URLs for secure file access without exposing credentials.
+- **Scalability**: Support both Firestore-only and signed URL result delivery options.
 - **Ephemeral**: Results are returned once; no long-term retention required.
 
-## High-level Flow
+## High-level Flow (Two Options)
+
+### Option A: Direct Upload + Firestore Results (Current Implementation)
 1. iOS uploads video to Firebase Storage at `users/{uid}/{uuid}.mov`.
 2. iOS creates a Firestore job doc: `jobs/{jobId}` with status `queued`.
 3. A small Cloud Function (2nd gen) listens for `jobs.onCreate` and publishes a message to Pub/Sub topic `process-video` with `jobId`.
 4. Pub/Sub pushes the message to a Cloud Run service (Python worker container).
 5. Worker downloads the video from Storage, runs analysis and summaries, and writes updates back to `jobs/{jobId}` (`status`, `progress`, `results`).
 6. iOS listens to `jobs/{jobId}` in real-time and renders updates; on completion, shows text outputs. An optional cleanup removes the job after a short TTL.
+
+### Option B: Signed URL Upload + Signed URL Results (Recommended for Production)
+1. iOS requests upload URL from backend API endpoint.
+2. Backend generates signed URL for `users/{uid}/{timestamp}_{filename}` with PUT permissions (1 hour expiration).
+3. iOS uploads video directly to Firebase Storage using signed URL.
+4. Backend receives upload notification (webhook/Cloud Function) and creates job in Firestore.
+5. Worker generates signed download URL for video processing (30 min expiration).
+6. Worker processes video, uploads results to Firebase Storage, generates signed download URLs.
+7. iOS receives job completion notification with signed URLs for downloading results (24 hour expiration).
 
 
 ## TL;DR of high-level flow (technical)
@@ -39,23 +52,31 @@ Client (iOS)
 ## Data Model (Firestore)
 Collection: `jobs`
 - `userId: string` — Firebase Auth UID of the requester
-- `storagePath: string` — Firebase Storage path, e.g., `videos/{uid}/{uuid}.mov`
+- `storagePath: string` — Firebase Storage path, e.g., `users/{uid}/{timestamp}_{filename}.mov`
 - `status: string` — one of `queued|processing|summarizing|completed|failed`
 - `progress: number` — 0..100
 - `options: map` — optional runtime knobs, e.g., `{ stride: 2, width: 960 }`
-- `drill: map` — result of `analyze_drill` (subset)
-- `parent_summary: string` — text from `parent_feedback_agent`
-- `coach_summary: string` — text from `improvement_coach_agent`
+- `delivery_method: string` — `firestore` (default) or `signed_urls`
+- `drill: map` — result of `analyze_drill` (subset) - only if delivery_method is `firestore`
+- `parent_summary: string` — text from `parent_feedback_agent` - only if delivery_method is `firestore`
+- `coach_summary: string` — text from `improvement_coach_agent` - only if delivery_method is `firestore`
+- `result_urls: map` — signed download URLs for results - only if delivery_method is `signed_urls`
+  - `analysis_url: string` — signed URL for analysis JSON (24h expiration)
+  - `parent_summary_url: string` — signed URL for parent summary text (24h expiration)  
+  - `coach_summary_url: string` — signed URL for coach analysis text (24h expiration)
 - `error: string` — present only on `failed`
 - `createdAt: timestamp`, `updatedAt: timestamp`
 
-Example document snapshot:
+Example document snapshots:
+
+**Option A: Firestore Results (Current)**
 ```json
 {
   "userId": "abc123",
-  "storagePath": "videos/abc123/9c9e...-clip.mov",
-  "status": "processing",
-  "progress": 70,
+  "storagePath": "users/abc123/20241201_143022_hockey_drill.mov",
+  "status": "completed",
+  "progress": 100,
+  "delivery_method": "firestore",
   "options": { "stride": 2, "width": 960 },
   "drill": {
     "fps": 30.0,
@@ -64,6 +85,25 @@ Example document snapshot:
   },
   "parent_summary": "2 shots detected: ...",
   "coach_summary": "What went well:\n- ...\n\nWhat to work on:\n- ...",
+  "createdAt": { ".sv": "timestamp" },
+  "updatedAt": { ".sv": "timestamp" }
+}
+```
+
+**Option B: Signed URL Results (Recommended)**
+```json
+{
+  "userId": "abc123",
+  "storagePath": "users/abc123/20241201_143022_hockey_drill.mov",
+  "status": "completed", 
+  "progress": 100,
+  "delivery_method": "signed_urls",
+  "options": { "stride": 2, "width": 960 },
+  "result_urls": {
+    "analysis_url": "https://storage.googleapis.com/puck-buddy.appspot.com/users/abc123/results/20241201_143022/analysis.json?X-Goog-Algorithm=...",
+    "parent_summary_url": "https://storage.googleapis.com/puck-buddy.appspot.com/users/abc123/results/20241201_143022/parent_summary.txt?X-Goog-Algorithm=...",
+    "coach_summary_url": "https://storage.googleapis.com/puck-buddy.appspot.com/users/abc123/results/20241201_143022/coach_analysis.txt?X-Goog-Algorithm=..."
+  },
   "createdAt": { ".sv": "timestamp" },
   "updatedAt": { ".sv": "timestamp" }
 }
@@ -139,7 +179,119 @@ Worker responsibilities:
 - On failure: set `status=failed` with an `error` message.
 - Optional: schedule deletion of the job after N minutes.
 
+## Signed URL Integration (Option B)
+
+### Backend API Endpoints
+For signed URL workflow, add these endpoints to your backend:
+
+```python
+# GET /api/upload-url
+# Generate signed URL for video upload
+@app.route('/api/upload-url', methods=['POST'])
+def generate_upload_url():
+    data = request.get_json()
+    user_id = data['user_id']
+    filename = data['filename']
+    
+    from utils.firebase_storage import FirebaseStorageManager
+    storage_manager = FirebaseStorageManager()
+    
+    upload_url, storage_path = storage_manager.generate_upload_url(
+        user_id=user_id, filename=filename, expiration_minutes=60
+    )
+    
+    return {
+        "upload_url": upload_url,
+        "storage_path": storage_path,
+        "expires_in": 3600
+    }
+
+# GET /api/results/{user_id}
+# Get analysis results with signed URLs
+@app.route('/api/results/<user_id>')
+def get_user_results(user_id):
+    storage_manager = FirebaseStorageManager()
+    results = storage_manager.list_user_results(user_id)
+    
+    # Generate fresh download URLs
+    for result_group in results:
+        if result_group['files']:
+            storage_paths = {
+                filename.split('.')[0]: file_info['storage_path']
+                for filename, file_info in result_group['files'].items()
+            }
+            download_urls = storage_manager.generate_results_download_urls(
+                storage_paths, expiration_minutes=60
+            )
+            result_group['download_urls'] = download_urls
+    
+    return {"results": results}
+```
+
+### Worker Integration
+Update Cloud Run worker to support signed URLs:
+
+```python
+def process_job_with_signed_urls(job_data):
+    from utils.firebase_storage import FirebaseStorageManager
+    storage_manager = FirebaseStorageManager()
+    
+    # Generate signed download URL for video
+    video_download_url = storage_manager.generate_download_url(
+        job_data['storagePath'], expiration_minutes=30
+    )
+    
+    # Download and process video
+    with tempfile.NamedTemporaryFile(suffix=".mov") as tmp_file:
+        urllib.request.urlretrieve(video_download_url, tmp_file.name)
+        analysis_result = analyze_drill(tmp_file.name)
+        parent_summary = generate_summary_with_gemini(analysis_result)
+        coach_analysis = generate_sections(analysis_result)
+    
+    # Upload results to Firebase Storage
+    results_paths = storage_manager.upload_analysis_results(
+        user_id=job_data['userId'],
+        video_filename=os.path.basename(job_data['storagePath']),
+        analysis_data=analysis_result,
+        parent_summary=parent_summary,
+        coach_analysis=coach_analysis
+    )
+    
+    # Generate signed URLs for results
+    result_urls = storage_manager.generate_results_download_urls(
+        results_paths, expiration_minutes=1440  # 24 hours
+    )
+    
+    # Update job with result URLs
+    job_ref.update({
+        'status': 'completed',
+        'progress': 100,
+        'delivery_method': 'signed_urls',
+        'result_urls': result_urls
+    })
+```
+
 ## Security & Access Control
+
+### Firebase Storage Rules (Updated for Signed URLs)
+```javascript
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/{allPaths=**} {
+      // Authenticated users can write their own files
+      allow write: if request.auth != null && request.auth.uid == uid;
+      
+      // Authenticated users can read their own files  
+      allow read: if request.auth != null && request.auth.uid == uid;
+      
+      // Allow signed URL access (no authentication required for signed URLs)
+      // This enables secure temporary access for video processing and result delivery
+      allow read, write: if request.auth == null;
+    }
+  }
+}
+```
 
 ### Firestore Rules (sketch)
 ```javascript

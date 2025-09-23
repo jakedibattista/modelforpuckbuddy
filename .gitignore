@@ -4,6 +4,7 @@ results/
 __pycache__/
 *.pyc
 GoogleService-Info.plist
+firebase-service-account-key.json
 node_modules/
 .DS_Store
 .venv/

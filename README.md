@@ -27,11 +27,18 @@ modelforpuckbuddy/
   utils/                   # Shared helpers
     config.py              # load_env(), get_required_env()
     io.py                  # load_json_file()
+  tests/                   # Testing utilities
+    test_firebase_video.py # Full pipeline test with Firebase videos
+    test_signed_url_workflow.py # Complete signed URL workflow test
+    get_firebase_url.py    # Firebase Storage URL generator
   helpfuldocs/             # Guides and architecture notes
     HOCKEY_VIDEO_TESTING_GUIDE.md
-    ARCHITECTURE.md
-    IOS_INTEGRATION.md
+    ARCHITECTURE.md        # Supports both direct Firebase and signed URL workflows
+    IOS_INTEGRATION.md     # iOS implementation for both approaches
+    FIREBASE_SIGNED_URL_INTEGRATION.md  # Production integration guide
+    MIGRATION_TO_SIGNED_URLS.md        # Migration from current to signed URL approach
     QUESTIONS_FOR_CONSIDERATION.md
+  setup_firebase_admin.py # Firebase Admin SDK setup helper
   firebase.json            # Firebase config (kept at repo root)
   README.md, LICENSE
   videos/                  # Local inputs (gitignored)
@@ -63,6 +70,28 @@ To generate an analysis JSON from a local video, install analysis dependencies (
 ```bash
 python -c "from analysis.shooting_drill_feedback import analyze_drill; import json; print(json.dumps(analyze_drill('videos/input/your_clip.mov'), indent=2))"
 ```
+
+## Firebase Signed URL Integration
+For production app integration with secure video uploads and result delivery:
+
+```bash
+# Setup Firebase Admin SDK
+python3 setup_firebase_admin.py
+
+# Test complete signed URL workflow
+cd tests
+python3 test_signed_url_workflow.py "test_user_123" "../videos/input/kidshoot2.MOV"
+```
+
+## Testing Firebase videos
+To test the complete pipeline with a video from Firebase Storage:
+```bash
+cd tests
+python3 get_firebase_url.py "users/your-uid/video.mov"
+export GOOGLE_API_KEY=your_key
+python3 test_firebase_video.py "https://firebasestorage.googleapis.com/v0/b/project.appspot.com/o/video.mov?alt=media"
+```
+See `helpfuldocs/FIREBASE_SIGNED_URL_INTEGRATION.md` for complete integration guide.
 
 ## Cloud components
 - Firebase Functions (2nd gen) in `functions/` enqueue jobs and clean old data.

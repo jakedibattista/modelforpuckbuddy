@@ -2,6 +2,12 @@
 
 This comprehensive guide shows how your iOS app uploads a user video, creates a processing job, listens for real-time updates, handles background/push notifications, and recovers results if the app is closed.
 
+**Two Integration Options:**
+- **Option A**: Direct Firebase upload + Firestore results (Current implementation)
+- **Option B**: Signed URL upload + Signed URL results (Recommended for production)
+
+Both options are supported. Option B provides better security and scalability.
+
 ### Prerequisites & Setup
 
 1. **Add Firebase to your iOS project:**
@@ -51,7 +57,7 @@ enum VideoAnalysisError: Error, LocalizedError {
 }
 ```
 
-### Complete Service Implementation
+### Complete Service Implementation (Option A: Direct Upload)
 ```swift
 import Foundation
 import Firebase
@@ -245,6 +251,269 @@ class VideoAnalysisService: ObservableObject {
                     }
                 }
         }
+    }
+}
+```
+
+### Signed URL Service Implementation (Option B: Recommended)
+```swift
+import Foundation
+import Firebase
+import FirebaseAuth
+import FirebaseFirestore
+
+@MainActor
+class SignedURLVideoAnalysisService: ObservableObject {
+    @Published var isUploading = false
+    @Published var uploadProgress: Double = 0
+    @Published var analysisProgress = 0
+    @Published var currentStatus = ""
+    @Published var parentSummary: String?
+    @Published var coachSummary: String?
+    @Published var error: VideoAnalysisError?
+    
+    private var jobListener: ListenerRegistration?
+    private let backendBaseURL = "https://your-backend.com/api"  // Update with your backend URL
+    
+    // MARK: - Public Interface
+    
+    func submitVideoWithSignedURL(_ videoURL: URL) async throws -> (parentSummary: String, coachSummary: String) {
+        reset()
+        
+        guard let user = Auth.auth().currentUser else {
+            throw VideoAnalysisError.notAuthenticated
+        }
+        
+        // Validate video
+        try validateVideo(videoURL)
+        
+        // Request upload URL from backend
+        let uploadInfo = try await requestUploadURL(filename: videoURL.lastPathComponent, userId: user.uid)
+        
+        // Upload video using signed URL
+        try await uploadVideoWithSignedURL(videoURL, to: uploadInfo.uploadURL)
+        
+        // Create job and listen for completion
+        let jobId = try await createJobForSignedURL(storagePath: uploadInfo.storagePath, userId: user.uid)
+        
+        // Wait for completion
+        return try await waitForCompletionWithSignedURLs(jobId: jobId)
+    }
+    
+    func fetchLatestResultsWithSignedURLs() async -> (parentSummary: String?, coachSummary: String?)? {
+        guard let uid = Auth.auth().currentUser?.uid else { return nil }
+        
+        // Get results from backend API with signed URLs
+        guard let url = URL(string: "\(backendBaseURL)/results/\(uid)") else { return nil }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let response = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let results = response?["results"] as? [[String: Any]]
+            
+            if let latestResult = results?.first,
+               let downloadURLs = latestResult["download_urls"] as? [String: String],
+               let parentURL = downloadURLs["parent_summary"],
+               let coachURL = downloadURLs["coach_summary"] {
+                
+                // Download results from signed URLs
+                let parentSummary = try await downloadTextFromSignedURL(parentURL)
+                let coachSummary = try await downloadTextFromSignedURL(coachURL)
+                
+                return (parentSummary, coachSummary)
+            }
+        } catch {
+            print("Error fetching results: \(error)")
+        }
+        
+        return nil
+    }
+    
+    // MARK: - Private Implementation
+    
+    private struct UploadInfo {
+        let uploadURL: String
+        let storagePath: String
+    }
+    
+    private func reset() {
+        isUploading = false
+        uploadProgress = 0
+        analysisProgress = 0
+        currentStatus = ""
+        parentSummary = nil
+        coachSummary = nil
+        error = nil
+        jobListener?.remove()
+    }
+    
+    private func validateVideo(_ url: URL) throws {
+        let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        if fileSize > 100_000_000 { // 100MB limit
+            throw VideoAnalysisError.invalidVideo
+        }
+    }
+    
+    private func requestUploadURL(filename: String, userId: String) async throws -> UploadInfo {
+        guard let url = URL(string: "\(backendBaseURL)/upload-url") else {
+            throw VideoAnalysisError.networkError
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body = ["user_id": userId, "filename": filename]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw VideoAnalysisError.networkError
+        }
+        
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let uploadURL = json?["upload_url"] as? String,
+              let storagePath = json?["storage_path"] as? String else {
+            throw VideoAnalysisError.networkError
+        }
+        
+        return UploadInfo(uploadURL: uploadURL, storagePath: storagePath)
+    }
+    
+    private func uploadVideoWithSignedURL(_ videoURL: URL, to uploadURL: String) async throws {
+        guard let url = URL(string: uploadURL) else {
+            throw VideoAnalysisError.networkError
+        }
+        
+        isUploading = true
+        currentStatus = "Uploading video..."
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("video/quicktime", forHTTPHeaderField: "Content-Type")
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            let uploadTask = URLSession.shared.uploadTask(with: request, fromFile: videoURL) { [weak self] data, response, error in
+                DispatchQueue.main.async {
+                    self?.isUploading = false
+                }
+                
+                if let error = error {
+                    continuation.resume(throwing: VideoAnalysisError.uploadFailed(error))
+                } else if let httpResponse = response as? HTTPURLResponse,
+                          httpResponse.statusCode == 200 {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: VideoAnalysisError.uploadFailed(NSError(domain: "Upload", code: 0)))
+                }
+            }
+            
+            // Mock upload progress (real implementation would track actual progress)
+            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+                DispatchQueue.main.async { [weak self] in
+                    self?.uploadProgress = min((self?.uploadProgress ?? 0) + 0.05, 0.95)
+                }
+                if self?.uploadProgress ?? 0 >= 0.95 {
+                    timer.invalidate()
+                }
+            }
+            
+            uploadTask.resume()
+        }
+    }
+    
+    private func createJobForSignedURL(storagePath: String, userId: String) async throws -> String {
+        currentStatus = "Creating analysis job..."
+        
+        let jobRef = Firestore.firestore().collection("jobs").document()
+        let jobData: [String: Any] = [
+            "userId": userId,
+            "storagePath": storagePath,
+            "status": "queued",
+            "progress": 0,
+            "delivery_method": "signed_urls",
+            "createdAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
+        
+        try await jobRef.setData(jobData)
+        return jobRef.documentID
+    }
+    
+    private func waitForCompletionWithSignedURLs(jobId: String) async throws -> (parentSummary: String, coachSummary: String) {
+        currentStatus = "Waiting for analysis..."
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            jobListener = Firestore.firestore().collection("jobs").document(jobId)
+                .addSnapshotListener { [weak self] snapshot, error in
+                    guard let self = self else { return }
+                    
+                    if let error = error {
+                        continuation.resume(throwing: VideoAnalysisError.networkError)
+                        return
+                    }
+                    
+                    guard let data = snapshot?.data() else { return }
+                    
+                    DispatchQueue.main.async {
+                        let status = data["status"] as? String ?? "unknown"
+                        let progress = data["progress"] as? Int ?? 0
+                        
+                        self.currentStatus = status.capitalized
+                        self.analysisProgress = progress
+                        
+                        switch status {
+                        case "completed":
+                            if let resultURLs = data["result_urls"] as? [String: String],
+                               let parentURL = resultURLs["parent_summary_url"],
+                               let coachURL = resultURLs["coach_summary_url"] {
+                                
+                                // Download results from signed URLs
+                                Task {
+                                    do {
+                                        let parentSummary = try await self.downloadTextFromSignedURL(parentURL)
+                                        let coachSummary = try await self.downloadTextFromSignedURL(coachURL)
+                                        
+                                        await MainActor.run {
+                                            self.parentSummary = parentSummary
+                                            self.coachSummary = coachSummary
+                                            self.jobListener?.remove()
+                                        }
+                                        
+                                        continuation.resume(returning: (parentSummary: parentSummary, coachSummary: coachSummary))
+                                    } catch {
+                                        continuation.resume(throwing: VideoAnalysisError.networkError)
+                                    }
+                                }
+                            }
+                            
+                        case "failed":
+                            let errorMsg = data["error"] as? String ?? "Unknown error"
+                            self.jobListener?.remove()
+                            continuation.resume(throwing: VideoAnalysisError.processingFailed(errorMsg))
+                            
+                        default:
+                            // Still processing - continue listening
+                            break
+                        }
+                    }
+                }
+        }
+    }
+    
+    private func downloadTextFromSignedURL(_ urlString: String) async throws -> String {
+        guard let url = URL(string: urlString) else {
+            throw VideoAnalysisError.networkError
+        }
+        
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw VideoAnalysisError.networkError
+        }
+        
+        return text
     }
 }
 ```
