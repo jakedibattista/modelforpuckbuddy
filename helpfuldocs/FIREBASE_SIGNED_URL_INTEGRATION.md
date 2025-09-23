@@ -25,6 +25,30 @@ Mobile App → Backend (Signed URL) → Firebase Storage → Video Processing �
 7. **Delivery URLs**: Generate signed download URLs for results
 8. **App Download**: Mobile app downloads results using signed URLs
 
+## Production Deployment
+
+✅ **The backend API is already deployed and ready for production use:**
+
+**Backend API URL**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+
+### Available Endpoints:
+- `GET /health` - Service health check  
+- `POST /api/upload-url` - Generate signed URL for video upload
+- `POST /api/submit-video` - Create analysis job
+- `POST /api/download-url` - Generate signed URL for file download  
+- `GET /api/results/{user_id}` - List user's analysis results
+
+### Quick Test:
+```bash
+# Health check
+curl https://puck-buddy-model-22317830094.us-central1.run.app/health
+
+# Test upload URL generation (requires Firebase service account setup)
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload-url \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test-user","filename":"test.mp4"}'
+```
+
 ## Setup Instructions
 
 ### 1. Install Dependencies

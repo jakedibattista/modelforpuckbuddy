@@ -33,6 +33,7 @@ struct PuckBuddyApp: App {
    - Firebase Storage bucket: `puck-buddy.firebasestorage.app`
    - Firestore collection: `jobs`
    - Storage path convention: `users/{uid}/{uuid}.mov`
+   - **Backend API URL**: `https://puck-buddy-model-22317830094.us-central1.run.app`
 
 ### Error Handling
 ```swift

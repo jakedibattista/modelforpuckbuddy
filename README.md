@@ -14,10 +14,9 @@ modelforpuckbuddy/
     __init__.py
     parent_feedback_agent.py        # per-shot parent report
     improvement_coach_agent.py      # 2-section coach summary
-  worker/                  # Cloud Run HTTP worker (Pub/Sub push)
-    app.py
-    Dockerfile
-    requirements.txt
+  worker/                  # Cloud Run worker services
+    app.py                 # Original worker for Pub/Sub processing
+    app_signed_urls.py     # Signed URL worker for secure processing
   functions/               # Firebase Functions (enqueue + cleanup)
     index.js
     package.json
@@ -27,19 +26,20 @@ modelforpuckbuddy/
   utils/                   # Shared helpers
     config.py              # load_env(), get_required_env()
     io.py                  # load_json_file()
+    firebase_storage.py    # Firebase Storage Manager with signed URLs
   tests/                   # Testing utilities
-    test_firebase_video.py # Full pipeline test with Firebase videos
-    test_signed_url_workflow.py # Complete signed URL workflow test
-    get_firebase_url.py    # Firebase Storage URL generator
+    test_complete_signed_url_workflow.py # End-to-end signed URL test
   helpfuldocs/             # Guides and architecture notes
     HOCKEY_VIDEO_TESTING_GUIDE.md
-    ARCHITECTURE.md        # Supports both direct Firebase and signed URL workflows
-    IOS_INTEGRATION.md     # iOS implementation for both approaches
+    ARCHITECTURE.md        # End-to-end design with signed URL focus
+    IOS_INTEGRATION.md     # iOS implementation guide
     FIREBASE_SIGNED_URL_INTEGRATION.md  # Production integration guide
-    MIGRATION_TO_SIGNED_URLS.md        # Migration from current to signed URL approach
+    MIGRATION_TO_SIGNED_URLS.md        # Migration strategy
     QUESTIONS_FOR_CONSIDERATION.md
-  setup_firebase_admin.py # Firebase Admin SDK setup helper
-  firebase.json            # Firebase config (kept at repo root)
+  signed_url_api.py        # Flask backend API for signed URL endpoints
+  app.py                   # Cloud Run entrypoint for backend API
+  requirements.txt         # Dependencies for Cloud Run deployment
+  firebase.json            # Firebase config
   README.md, LICENSE
   videos/                  # Local inputs (gitignored)
   results/                 # Local outputs (gitignored)
@@ -71,31 +71,45 @@ To generate an analysis JSON from a local video, install analysis dependencies (
 python -c "from analysis.shooting_drill_feedback import analyze_drill; import json; print(json.dumps(analyze_drill('videos/input/your_clip.mov'), indent=2))"
 ```
 
+## Production Deployment
+The backend API is deployed to Cloud Run and ready for production use:
+
+**Backend API URL**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+
+### Available Endpoints:
+- `GET /health` - Service health check
+- `POST /api/upload-url` - Generate signed URL for video upload
+- `POST /api/submit-video` - Create analysis job
+- `POST /api/download-url` - Generate signed URL for file download
+- `GET /api/results/{user_id}` - List user's analysis results
+
+### Testing the deployment:
+```bash
+# Health check
+curl https://puck-buddy-model-22317830094.us-central1.run.app/health
+
+# Test signed URL generation (requires Firebase service account setup)
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload-url \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test-user","filename":"test.mp4"}'
+```
+
 ## Firebase Signed URL Integration
-For production app integration with secure video uploads and result delivery:
+For complete app integration with secure video uploads and result delivery:
 
 ```bash
-# Setup Firebase Admin SDK
-python3 setup_firebase_admin.py
-
 # Test complete signed URL workflow
 cd tests
-python3 test_signed_url_workflow.py "test_user_123" "../videos/input/kidshoot2.MOV"
+python3 test_complete_signed_url_workflow.py "test_user_123" "../videos/input/kidshoot2.MOV"
 ```
 
-## Testing Firebase videos
-To test the complete pipeline with a video from Firebase Storage:
-```bash
-cd tests
-python3 get_firebase_url.py "users/your-uid/video.mov"
-export GOOGLE_API_KEY=your_key
-python3 test_firebase_video.py "https://firebasestorage.googleapis.com/v0/b/project.appspot.com/o/video.mov?alt=media"
-```
 See `helpfuldocs/FIREBASE_SIGNED_URL_INTEGRATION.md` for complete integration guide.
 
 ## Cloud components
-- Firebase Functions (2nd gen) in `functions/` enqueue jobs and clean old data.
-- Cloud Run `worker/` handles Pub/Sub push, downloads video, runs `analysis.analyze_drill`, then calls agents for summaries, and writes results to Firestore.
+- **Backend API** (`signed_url_api.py`) deployed to Cloud Run provides signed URL endpoints
+- **Worker services** (`worker/app_signed_urls.py`) handle video processing with signed URLs
+- Firebase Functions (2nd gen) in `functions/` can enqueue jobs and clean old data
+- Cloud Run handles video analysis via `analysis.analyze_drill` and agent summaries
 
 ## Docs
 - See `helpfuldocs/HOCKEY_VIDEO_TESTING_GUIDE.md` for local testing tips.

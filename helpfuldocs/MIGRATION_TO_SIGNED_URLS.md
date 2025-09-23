@@ -15,9 +15,17 @@ This guide helps you migrate from the current direct Firebase Storage and Firest
 - Results stored in Firebase Storage with signed URLs for access
 - Better security, no Firebase credentials in app
 
+## Current Status
+
+✅ **Phase 1-3 Complete: Backend is deployed and operational**
+
+**Backend API URL**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+
+The signed URL infrastructure is ready for production use. Your app can now integrate with the deployed backend for secure video processing.
+
 ## Migration Strategy
 
-### Phase 1: Backend Setup (No Breaking Changes)
+### Phase 1: Backend Setup (No Breaking Changes) ✅ COMPLETE
 
 1. **Add Firebase Admin SDK to your backend**
    ```bash

@@ -20,14 +20,16 @@ This document describes the end-to-end design to let the iOS app send videos for
 5. Worker downloads the video from Storage, runs analysis and summaries, and writes updates back to `jobs/{jobId}` (`status`, `progress`, `results`).
 6. iOS listens to `jobs/{jobId}` in real-time and renders updates; on completion, shows text outputs. An optional cleanup removes the job after a short TTL.
 
-### Option B: Signed URL Upload + Signed URL Results (Recommended for Production)
-1. iOS requests upload URL from backend API endpoint.
+### Option B: Signed URL Upload + Signed URL Results (Recommended for Production) ✅ DEPLOYED
+**Backend API**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+
+1. iOS requests upload URL from backend API endpoint: `POST /api/upload-url`
 2. Backend generates signed URL for `users/{uid}/{timestamp}_{filename}` with PUT permissions (1 hour expiration).
 3. iOS uploads video directly to Firebase Storage using signed URL.
-4. Backend receives upload notification (webhook/Cloud Function) and creates job in Firestore.
-5. Worker generates signed download URL for video processing (30 min expiration).
+4. iOS calls `POST /api/submit-video` to create job in Firestore with `deliveryMethod: "signed_urls"`.
+5. Worker (`worker/app_signed_urls.py`) generates signed download URL for video processing (30 min expiration).
 6. Worker processes video, uploads results to Firebase Storage, generates signed download URLs.
-7. iOS receives job completion notification with signed URLs for downloading results (24 hour expiration).
+7. iOS polls `GET /api/results/{user_id}` or listens to Firestore job updates to get signed URLs for downloading results (24 hour expiration).
 
 
 ## TL;DR of high-level flow (technical)
