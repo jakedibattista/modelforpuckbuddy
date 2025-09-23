@@ -1,6 +1,6 @@
 """Cloud Run entrypoint for the signed URL backend API."""
 
-from backend.signed_url_api import create_app
+from signed_url_api import create_app
 
 
 app = create_app()

@@ -14,7 +14,7 @@ from utils.firebase_storage import FirebaseStorageManager
 from firebase_admin import firestore
 
 
-def _create_app() -> Flask:
+def create_app() -> Flask:
     app = Flask(__name__)
     CORS(app, origins=os.getenv("CORS_ORIGIN", "*"))
 
@@ -136,7 +136,7 @@ def _create_app() -> Flask:
     return app
 
 
-app = _create_app()
+app = create_app()
 
 
 if __name__ == "__main__":
