@@ -141,9 +141,37 @@ def create_app() -> Flask:
                     logger.info("Running MediaPipe pose analysis on video")
                     analysis_results = analyze_drill(temp_video_path)
                     
-                    if not analysis_results or 'shot_events' not in analysis_results:
+                    # Use correct keys from analyzer output
+                    shots = analysis_results.get('shots', []) if analysis_results else []
+                    video_duration = analysis_results.get('duration_est_sec', 0) if analysis_results else 0
+                    logger.info(f"Pose analysis complete: shots_detected={len(shots)}, duration_sec={video_duration}")
+                    
+                    if not shots:
                         logger.warning("Pose analysis returned no shot events")
-                        return jsonify({"error": "No shooting events detected in video"}), 400
+                        # Provide a helpful, successful response for no-shots cases
+                        parent_summary = (
+                            "I didn't detect any clear shooting events in this video. "
+                            "For best results: ensure the full body and stick are visible, keep the camera steady, and film 10–15 reps."
+                        )
+                        coach_summary = (
+                            "What to try next:\n"
+                            "- Capture from the side at waist height so knees and stick are visible\n"
+                            "- Stand ~10–15 feet from the player\n"
+                            "- Record at least 20–30 seconds with multiple shot attempts"
+                        )
+                        return jsonify({
+                            "success": True,
+                            "analysis": {
+                                "parent_summary": parent_summary,
+                                "coach_summary": coach_summary,
+                                "shots_detected": 0,
+                                "video_duration": video_duration,
+                                "video_size_mb": round(video_size_mb, 1),
+                                "pose_analysis": True,
+                                "no_shots_detected": True,
+                                "message": "No shooting events detected; provided filming tips."
+                            }
+                        })
                     
                     # Generate AI summaries using the real analysis
                     logger.info("Generating parent summary with Gemini")
@@ -159,8 +187,8 @@ def create_app() -> Flask:
                         "analysis": {
                             "parent_summary": parent_summary,
                             "coach_summary": coach_analysis,
-                            "shots_detected": len(analysis_results.get("shot_events", [])),
-                            "video_duration": analysis_results.get("video_info", {}).get("duration_seconds", 0),
+                            "shots_detected": len(shots),
+                            "video_duration": video_duration,
                             "video_size_mb": round(video_size_mb, 1),
                             "pose_analysis": True,
                             "message": "Complete video analysis with MediaPipe pose detection"
