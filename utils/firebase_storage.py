@@ -29,10 +29,11 @@ try:
     from firebase_admin import credentials, storage, firestore
     from google.cloud import storage as gcs
     from google.cloud.exceptions import NotFound
+    from google.cloud import secretmanager
 except ImportError as exc:  # pragma: no cover - surface clearer message
     raise ImportError(
         f"Required Firebase dependencies not installed: {exc}\n"
-        "Install with: pip install firebase-admin google-cloud-storage"
+        "Install with: pip install firebase-admin google-cloud-storage google-cloud-secret-manager"
     ) from exc
 
 
@@ -56,11 +57,26 @@ class FirebaseStorageManager:
             if service_account_path and os.path.exists(service_account_path):
                 cred = credentials.Certificate(service_account_path)
             else:
+                # Try to use service account key file first (for local development)
                 cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+                
+                # If cred_path is relative, try to resolve it relative to the project root
+                if cred_path and not os.path.isabs(cred_path):
+                    # Get the project root directory (where this package is located)
+                    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    cred_path = os.path.join(project_root, cred_path)
+                
                 if cred_path and os.path.exists(cred_path):
                     cred = credentials.Certificate(cred_path)
                 else:
-                    cred = credentials.ApplicationDefault()
+                    # Fallback: try the default filename in project root
+                    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    fallback_path = os.path.join(project_root, 'firebase-service-account-key.json')
+                    if os.path.exists(fallback_path):
+                        cred = credentials.Certificate(fallback_path)
+                    else:
+                        # Use Application Default Credentials (works in Cloud Run automatically)
+                        cred = credentials.ApplicationDefault()
 
             firebase_admin.initialize_app(cred, {
                 'storageBucket': self.bucket_name,
@@ -72,6 +88,61 @@ class FirebaseStorageManager:
         # bucket() expects bucket name without the gs:// prefix
         self.bucket = self.storage_client.bucket(self.bucket_name.replace('gs://', ''))
         self.db = firestore.client()
+        
+        # Cache for signing credentials
+        self._signing_credentials = None
+
+    def _get_signing_credentials(self):
+        """Get credentials for signing URLs - tries multiple sources."""
+        if self._signing_credentials is not None:
+            return self._signing_credentials
+            
+        # Try local file first (for local development)
+        signing_key_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'puck-buddy-storage-key.json'
+        )
+        if os.path.exists(signing_key_path):
+            from google.oauth2 import service_account
+            self._signing_credentials = service_account.Credentials.from_service_account_file(signing_key_path)
+            return self._signing_credentials
+        
+        # Try Secret Manager (for Cloud Run)
+        try:
+            client = secretmanager.SecretManagerServiceClient()
+            project_id = self.project_id or 'puck-buddy'
+            secret_name = f"projects/{project_id}/secrets/puck-buddy-storage-key/versions/latest"
+            
+            response = client.access_secret_version(request={"name": secret_name})
+            secret_data = response.payload.data.decode("UTF-8")
+            
+            # Parse the JSON and create credentials
+            import tempfile
+            import json
+            
+            # Validate the JSON first
+            key_data = json.loads(secret_data)
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                f.write(secret_data)
+                temp_key_path = f.name
+            
+            # Use Google Cloud credentials for signing, not Firebase Admin credentials
+            from google.oauth2 import service_account
+            self._signing_credentials = service_account.Credentials.from_service_account_file(temp_key_path)
+            
+            # Clean up temp file
+            try:
+                os.unlink(temp_key_path)
+            except:
+                pass
+                
+            return self._signing_credentials
+            
+        except Exception as e:
+            # If all else fails, return None (will fall back to default credentials)
+            self._signing_credentials = False  # Cache the failure
+            return None
 
     # ------------------------------------------------------------------
     # Upload helpers
@@ -85,13 +156,27 @@ class FirebaseStorageManager:
         storage_path = f"users/{user_id}/videos/{filename}"
 
         blob = self.bucket.blob(storage_path)
-        upload_url = blob.generate_signed_url(
-            version="v4",
-            expiration=timedelta(hours=expiration_hours),
-            method="PUT",
-            content_type=content_type,
-            headers={'x-goog-content-length-range': '0,104857600'},  # 100 MB
-        )
+        
+        # Use dedicated signing service account for signed URLs
+        signing_creds = self._get_signing_credentials()
+        if signing_creds:
+            upload_url = blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(hours=expiration_hours),
+                method="PUT",
+                content_type=content_type,
+                headers={'x-goog-content-length-range': '0,104857600'},  # 100 MB
+                credentials=signing_creds
+            )
+        else:
+            # Fallback to default method (may fail with compute credentials)
+            upload_url = blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(hours=expiration_hours),
+                method="PUT",
+                content_type=content_type,
+                headers={'x-goog-content-length-range': '0,104857600'},  # 100 MB
+            )
 
         return {
             'upload_url': upload_url,
@@ -114,12 +199,25 @@ class FirebaseStorageManager:
         if filename:
             storage_path = info['storage_path'].rsplit('/', 1)[0] + f"/{filename}"
             blob = self.bucket.blob(storage_path)
-            upload_url = blob.generate_signed_url(
-                version="v4",
-                expiration=timedelta(minutes=expiration_minutes),
-                method="PUT",
-                content_type='video/*'
-            )
+            
+            # Use dedicated signing service account for signed URLs
+            signing_creds = self._get_signing_credentials()
+            if signing_creds:
+                upload_url = blob.generate_signed_url(
+                    version="v4",
+                    expiration=timedelta(minutes=expiration_minutes),
+                    method="PUT",
+                    content_type='video/*',
+                    credentials=signing_creds
+                )
+            else:
+                # Fallback to default method (may fail with compute credentials)
+                upload_url = blob.generate_signed_url(
+                    version="v4",
+                    expiration=timedelta(minutes=expiration_minutes),
+                    method="PUT",
+                    content_type='video/*'
+                )
             return upload_url, storage_path
 
         return info['upload_url'], info['storage_path']
@@ -148,6 +246,17 @@ class FirebaseStorageManager:
         if not blob.exists():
             raise NotFound(f"Video not found: {storage_path}")
 
+        # Use dedicated signing service account for signed URLs
+        signing_creds = self._get_signing_credentials()
+        if signing_creds:
+            return blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(hours=expiration_hours),
+                method="GET",
+                credentials=signing_creds
+            )
+        
+        # Fallback to default bucket method (may fail with compute credentials)
         return blob.generate_signed_url(
             version="v4",
             expiration=timedelta(hours=expiration_hours),
@@ -205,11 +314,23 @@ class FirebaseStorageManager:
         download_urls: Dict[str, str] = {}
         for result_type, storage_path in storage_paths.items():
             blob = self.bucket.blob(storage_path)
-            download_urls[result_type] = blob.generate_signed_url(
-                version="v4",
-                expiration=timedelta(hours=expiration_hours),
-                method="GET",
-            )
+            
+            # Use dedicated signing service account for signed URLs
+            signing_creds = self._get_signing_credentials()
+            if signing_creds:
+                download_urls[result_type] = blob.generate_signed_url(
+                    version="v4",
+                    expiration=timedelta(hours=expiration_hours),
+                    method="GET",
+                    credentials=signing_creds
+                )
+            else:
+                # Fallback to default method (may fail with compute credentials)
+                download_urls[result_type] = blob.generate_signed_url(
+                    version="v4",
+                    expiration=timedelta(hours=expiration_hours),
+                    method="GET",
+                )
         return download_urls
 
     def complete_analysis_job(self, job_id: str, storage_paths: Dict[str, str]) -> None:

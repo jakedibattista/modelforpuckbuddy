@@ -3,3 +3,10 @@ flask-cors==4.0.0
 google-cloud-firestore==2.16.0
 google-cloud-storage==2.18.2
 firebase-admin==6.5.0
+google-cloud-secret-manager==2.20.2
+google-generativeai==0.3.2
+numpy==1.24.3
+opencv-python-headless==4.8.1.78
+mediapipe==0.10.9
+gunicorn==21.2.0
+google-genai==1.0.0

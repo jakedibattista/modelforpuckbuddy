@@ -77,7 +77,7 @@ The backend API is deployed to Cloud Run and ready for production use:
 ### Available Endpoints:
 - `GET /health` - Service health check
 - `POST /api/upload-url` - Generate signed URL for video upload
-- `POST /api/analyze-video` - ⭐ **Simple**: Upload video and get analysis results directly
+- `POST /api/analyze-video` - ⭐ **Simple**: Upload video and get analysis results with MediaPipe pose detection
 - `POST /api/submit-video` - Create analysis job (advanced workflow)
 - `GET /api/results/{user_id}` - List user's analysis results (advanced workflow)
 

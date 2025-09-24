@@ -58,14 +58,16 @@ Content-Type: application/json
 }
 ```
 
-**Response (after 2-5 minutes):**
+**Response (after ~2-5 minutes):**
 ```json
 {
   "success": true,
   "analysis": {
-    "parent_summary": "Great job! Your shooting form improved in several areas. In this session, you took 8 shots with an average front knee bend of 125°...",
-    "coach_summary": "## What Went Well\n\n- Good front knee bend on some reps (lowest ~108°)\n- Consistent shooting rhythm\n\n## Areas to Improve\n\n- Bend your FRONT knee deeper — aim ~110° front knee bend (most were ~125°)...",
-    "job_id": "abc123def456"
+    "parent_summary": "Great job! Your shooting form improved in several areas...",
+    "coach_summary": "## What Went Well\n\n- Good knee bend on most shots...",
+    "shots_detected": 7,
+    "video_duration": 54.3,
+    "video_size_mb": 23.1
   }
 }
 ```
@@ -255,19 +257,16 @@ async function analyzeWithProgress(videoFile, userId, onProgress) {
 - **Content**: Hockey shooting drills work best
 
 ### Error Handling
-```javascript
-// Common errors to handle:
-switch (error.message) {
-  case 'Analysis timeout - please try again':
-    // Video took too long to process (>5 min)
-    break;
-  case 'user_id and storage_path are required':
-    // Missing required parameters
-    break;
-  case 'Analysis failed: ...':
-    // Processing error (bad video, etc.)
-    break;
-}
+The API now returns concise, generic error messages (no internal stack traces):
+
+```json
+// 400 examples
+{ "error": "user_id and storage_path are required" }
+{ "error": "Video not found: users/uid/foo.mov" }
+
+// 500 examples
+{ "error": "Failed to create upload URL" }
+{ "error": "Failed to analyze video" }
 ```
 
 ### Rate Limits

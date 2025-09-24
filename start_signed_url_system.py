@@ -22,12 +22,14 @@ def check_requirements():
         print("❌ .env file not found")
         return False
     
-    # Check Firebase service account key
-    cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', './firebase-service-account-key.json')
-    if not os.path.exists(cred_path):
-        print(f"❌ Firebase service account key not found: {cred_path}")
-        print("\n💡 Download from: https://console.firebase.google.com/project/puck-buddy/settings/serviceaccounts/adminsdk")
-        return False
+    # Check credentials: prefer GOOGLE_APPLICATION_CREDENTIALS, otherwise rely on ADC
+    cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    if cred_path:
+        if not os.path.exists(cred_path):
+            print(f"❌ Service account key not found: {cred_path}")
+            return False
+    else:
+        print("ℹ️ GOOGLE_APPLICATION_CREDENTIALS not set; will use Application Default Credentials if available.")
     
     # Check test video
     test_videos = [
@@ -55,7 +57,7 @@ def start_backend_server():
     def run_backend():
         try:
             print("🚀 Starting Backend API Server...")
-            subprocess.run([sys.executable, 'backend_api.py'], check=True)
+            subprocess.run([sys.executable, 'app.py'], check=True)
         except subprocess.CalledProcessError as e:
             print(f"❌ Backend server failed: {e}")
         except KeyboardInterrupt:
@@ -133,7 +135,7 @@ def interactive_menu():
         if choice == '1':
             print("\n🚀 Starting Backend API Server...")
             try:
-                subprocess.run([sys.executable, 'backend_api.py'])
+                subprocess.run([sys.executable, 'app.py'])
             except KeyboardInterrupt:
                 print("\n🛑 Backend server stopped")
         

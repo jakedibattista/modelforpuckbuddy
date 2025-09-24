@@ -361,7 +361,7 @@ def main():
         if not success:
             print("\n💡 Troubleshooting Tips:")
             print("1. Make sure Firebase Admin SDK is configured")
-            print("2. Check that the backend API is running: python backend_api.py")
+            print("2. Check that the backend API is running: python app.py")
             print("3. Verify your .env file has all required variables")
             print("4. Ensure the test video file exists and is readable")
             sys.exit(1)
