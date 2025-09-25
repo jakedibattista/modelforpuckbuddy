@@ -99,7 +99,7 @@ def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
     else:
         result["hip_drive"] = "not tracked"
     
-    # Wrist steadiness (control smoothness)
+    # Wrist steadiness (control smoothness) - include data point
     control = shot.get("control_smoothness")
     if control is not None and control != "N/A":
         if control >= 0.6:
@@ -108,11 +108,11 @@ def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
             label = "jerky"
         else:
             label = "mixed"
-        result["wrist_steadiness"] = label
+        result["wrist_steadiness"] = f"{label} ({control:.2f})"
     else:
         result["wrist_steadiness"] = "not tracked"
     
-    # Head position (from enhanced metrics)
+    # Head position (from enhanced metrics) - include data point
     head_pos = shot.get("head_position", {})
     if head_pos and any(v is not None for v in head_pos.values()):
         # Average the available head metrics
@@ -120,11 +120,12 @@ def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
         if head_values:
             avg_head = sum(head_values) / len(head_values)
             if avg_head >= 0.8:
-                result["head_position"] = "excellent"
+                label = "excellent"
             elif avg_head >= 0.6:
-                result["head_position"] = "good"
+                label = "good"
             else:
-                result["head_position"] = "needs work"
+                label = "needs work"
+            result["head_position"] = f"{label} ({avg_head:.2f})"
         else:
             result["head_position"] = "not tracked"
     else:
@@ -174,11 +175,11 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
     for i, shot in enumerate(shots, 1):
         validated = validate_shot_data(shot)
         
-        shot_block = f"Shot {i}: time {validated['time_formatted']}:\n"
-        shot_block += f"front knee angle: {validated['front_knee_angle']}\n"
-        shot_block += f"hip drive: {validated['hip_drive']}\n"
-        shot_block += f"wrist steadiness: {validated['wrist_steadiness']}\n"
+        shot_block = f"Shot {i}: {validated['time_formatted']}:\n"
         shot_block += f"head position: {validated['head_position']}\n"
+        shot_block += f"wrist steadiness: {validated['wrist_steadiness']}\n"
+        shot_block += f"hip drive: {validated['hip_drive']}\n"
+        shot_block += f"front knee angle: {validated['front_knee_angle']}\n"
         shot_block += f"back leg angle: {validated['back_leg_angle']}"
         
         shot_lines.append(shot_block)
@@ -212,22 +213,22 @@ def generate_summary_with_gemini(
             "Time formatting: Convert all shot_time_sec values to MM:SS format (e.g., 8.2 seconds becomes 00:08).\n"
             
             "Metrics interpretation:\n"
-            "- Front knee angle: Use front_knee_bend_deg from lower_body_triangle if available, else knee_bend_min_deg\n"
+            "- Head position: Average head_position metrics (forward_lean, eye_level, target_facing): ≥0.8='excellent', ≥0.6='good', else='needs work' + include raw score in parentheses\n"
+            "- Wrist steadiness: Convert control_smoothness to labels: ≥0.6='smooth', ≤0.3='jerky', else='mixed' + include raw score in parentheses\n"
             "- Hip drive: Format as 'X.XXX (good/needs work)' based on hip_drive value and hip_drive_good boolean\n"
-            "- Wrist steadiness: Convert control_smoothness to labels: ≥0.6='smooth', ≤0.3='jerky', else='mixed'\n"
-            "- Head position: Average head_position metrics (forward_lean, eye_level, target_facing): ≥0.8='excellent', ≥0.6='good', else='needs work'\n"
+            "- Front knee angle: Use front_knee_bend_deg from lower_body_triangle if available, else knee_bend_min_deg\n"
             "- Back leg angle: Use back_leg_extension_deg from lower_body_triangle, add '(too bent)' if <150°\n"
             "- For any missing data, use 'not tracked'\n\n"
             
             "EXACT OUTPUT FORMAT:\n"
             "Shots detected at timestamps: MM:SS, MM:SS, MM:SS\n\n"
-            "Shot 1: time MM:SS:\n"
-            "front knee angle: XXX°\n"
+            "Shot 1: MM:SS:\n"
+            "head position: excellent/good/needs work (X.XX)\n"
+            "wrist steadiness: smooth/jerky/mixed (X.XX)\n"
             "hip drive: X.XXX (good/needs work)\n"
-            "wrist steadiness: smooth/jerky/mixed\n"
-            "head position: excellent/good/needs work\n"
+            "front knee angle: XXX°\n"
             "back leg angle: XXX°\n\n"
-            "Shot 2: time MM:SS:\n"
+            "Shot 2: MM:SS:\n"
             "[repeat format for each shot]\n\n"
             
             "Do NOT add any other text, explanations, or sections. Output ONLY the structured data in this exact format."
