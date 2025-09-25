@@ -215,7 +215,7 @@ def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite")
 
     # Produce rule-based draft to ensure accuracy
     ww, wt = _summarize_metrics(raw)
-    draft = "What went well:\n" + "\n".join(f"- {b}" for b in ww) + "\n\n" + "What to work on:\n" + "\n".join(f"- {b}" for b in wt)
+    draft = "**What went well:**\n" + "\n".join(f"- {b}" for b in ww) + "\n\n" + "**What to work on:**\n" + "\n".join(f"- {b}" for b in wt)
 
     system = (
         "You are a supportive youth hockey coach providing SPECIFIC feedback. Rewrite the DRAFT into the SAME two sections, keeping all specific details intact.\n\n"
@@ -238,8 +238,8 @@ def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite")
         "- Focus on actionable, specific improvements with concrete targets\n"
         "- Maintain positive, encouraging tone while being precise\n\n"
         
-        "Output format: Exactly two sections titled 'What went well:' and 'What to work on:' with 2-3 specific bullets each.\n\n"
-        "IMPORTANT: Output ONLY these two sections. Do NOT add any introductory text, greeting, or additional commentary. Start directly with 'What went well:'"
+        "Output format: Exactly two sections titled '**What went well:**' and '**What to work on:**' with 2-3 specific bullets each.\n\n"
+        "IMPORTANT: Output ONLY these two sections with BOLD HEADERS. Do NOT add any introductory text, greeting, or additional commentary. Start directly with '**What went well:**'"
     )
 
     resp = client.models.generate_content(
@@ -259,7 +259,7 @@ def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite")
     lines = text.split('\n')
     start_idx = 0
     for i, line in enumerate(lines):
-        if line.strip().lower().startswith('what went well'):
+        if line.strip().lower().startswith('what went well') or line.strip().lower().startswith('**what went well'):
             start_idx = i
             break
     
