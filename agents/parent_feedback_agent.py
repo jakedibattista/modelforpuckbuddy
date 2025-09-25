@@ -67,16 +67,6 @@ def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
     result["hip_drive_good"] = shot.get("hip_drive_good", "N/A")
     result["control_smoothness"] = shot.get("control_smoothness", "N/A")
     
-    # Stick lift handling
-    stick = shot.get("stick_lift", {})
-    if stick:
-        result["stick_present"] = stick.get("present", "N/A")
-        result["stick_time"] = stick.get("first_time_sec", "N/A")
-        result["stick_peak"] = stick.get("peak_norm", "N/A")
-    else:
-        result["stick_present"] = "N/A"
-        result["stick_time"] = "N/A"
-        result["stick_peak"] = "N/A"
     
     return result
 
@@ -114,7 +104,7 @@ def generate_summary_with_gemini(
             "For hip drive, include the 0..1 value and good/not good. For wrist steadiness, include only the label (no number). "
             "For head/upper/lower body, mention if excellent (≥0.8) or needs work (<0.6). "
             "Back leg extension: comment if <150° (too bent). If field missing or N/A, say 'not tracked'. "
-            "Output format: First line 'N shots detected: times …'; then per-shot bullets like: "
+            "Output format: First line 'Shots detected at timestamp: times …'; then per-shot bullets like: "
             "'time — front knee bend XXX°, hip drive H.HHH (good/not good), wrist steadiness: LABEL, head position: excellent/good/needs work, back leg: XXX° (too bent if <150°)'. "
             "Do NOT include any other sections (no 'What went well' or 'What to work on'). Keep it concise."
         )

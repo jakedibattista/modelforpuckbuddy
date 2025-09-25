@@ -162,7 +162,7 @@ def create_app() -> Flask:
                         return jsonify({
                             "success": True,
                             "analysis": {
-                                "parent_summary": parent_summary,
+                                "data_analysis": parent_summary,
                                 "coach_summary": coach_summary,
                                 "shots_detected": 0,
                                 "video_duration": video_duration,
@@ -185,7 +185,7 @@ def create_app() -> Flask:
                     return jsonify({
                         "success": True,
                         "analysis": {
-                            "parent_summary": parent_summary,
+                            "data_analysis": parent_summary,
                             "coach_summary": coach_analysis,
                             "shots_detected": len(shots),
                             "video_duration": video_duration,
@@ -205,73 +205,10 @@ def create_app() -> Flask:
                             logger.warning(f"Failed to cleanup temp file: {cleanup_error}")
                 
             except ImportError as e:
-                logger.warning(f"AI agents not available: {e}, falling back to enhanced demo")
-                # Fallback to enhanced demo if agents aren't available
-                
-                # Generate more personalized demo content based on video characteristics
-                video_duration = min(60, max(10, video_size_mb * 2))
-                estimated_shots = max(1, int(video_duration / 8))  # Roughly 1 shot per 8 seconds
-                
-                parent_summary = f"""
-Great job on your {video_duration:.0f}-second shooting practice session! 
-
-I analyzed your {estimated_shots} shot attempts and noticed:
-
-🎯 **Shot Quality**: Your form showed consistency across attempts
-⚡ **Timing**: Good rhythm in your shooting sequence  
-🏒 **Technique**: Solid fundamentals with room for refinement
-
-**What you did well:**
-• Maintained good balance throughout your shots
-• Consistent stick positioning and grip
-• Good follow-through on most attempts
-
-**Areas to focus on next time:**
-• Keep your head up more when approaching the net
-• Work on quicker release timing
-• Practice shooting from different angles
-
-You're showing real improvement - keep up the great work! 🏒
-                """.strip()
-                
-                coach_summary = f"""
-## Video Analysis Summary
-
-**Session Overview:**
-- Duration: {video_duration:.0f} seconds
-- Estimated shots: {estimated_shots}
-- Video quality: {"Good" if video_size_mb > 10 else "Moderate"}
-
-**Technical Assessment:**
-- **Stance**: Solid base, room for wider positioning
-- **Release**: Good timing, work on quicker execution  
-- **Follow-through**: Consistent direction, extend more toward target
-
-**Training Recommendations:**
-1. **Power Development**: Practice with wider stance for more leverage
-2. **Accuracy Training**: Set up target zones in net corners
-3. **Quick Release**: Work on one-timer drills
-
-**Next Session Goals:**
-- Focus on shooting from different positions
-- Practice both wrist shots and snapshots
-- Work on shooting while in motion
-
-Keep building on these fundamentals!
-                """.strip()
-                
+                logger.error(f"Video analysis dependencies not available: {e}")
                 return jsonify({
-                    "success": True,
-                    "analysis": {
-                        "parent_summary": parent_summary,
-                        "coach_summary": coach_summary,
-                        "shots_detected": estimated_shots,
-                        "video_duration": video_duration,
-                        "video_size_mb": round(video_size_mb, 1),
-                        "enhanced_demo": True,
-                        "message": "Enhanced analysis based on video characteristics"
-                    }
-                })
+                    "error": "Video analysis system is temporarily unavailable"
+                }), 503
             
         except Exception as exc:
             logger.exception("Failed to analyze video")

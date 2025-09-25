@@ -63,7 +63,7 @@ Content-Type: application/json
 {
   "success": true,
   "analysis": {
-    "parent_summary": "Great job! Your shooting form improved in several areas...",
+    "data_analysis": "Shots detected at timestamp: 8.2s, 15.7s, 23.1s...",
     "coach_summary": "## What Went Well\n\n- Good knee bend on most shots...",
     "shots_detected": 7,
     "video_duration": 54.3,
