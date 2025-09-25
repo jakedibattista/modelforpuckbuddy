@@ -12,6 +12,7 @@ from flask_cors import CORS
 
 from utils.firebase_storage import FirebaseStorageManager
 from firebase_admin import firestore
+from agents.openice_agent import OpenIceAgent
 
 
 def create_app() -> Flask:
@@ -22,6 +23,7 @@ def create_app() -> Flask:
     logger = logging.getLogger("signed_url_api")
 
     manager: FirebaseStorageManager | None = None
+    openice_agent: OpenIceAgent | None = None
 
     def get_manager() -> FirebaseStorageManager:
         nonlocal manager
@@ -29,6 +31,17 @@ def create_app() -> Flask:
             manager = FirebaseStorageManager()
             logger.info("FirebaseStorageManager initialised")
         return manager
+
+    def get_openice_agent() -> OpenIceAgent:
+        nonlocal openice_agent
+        if openice_agent is None:
+            try:
+                openice_agent = OpenIceAgent()
+                logger.info("OpenIce agent initialised")
+            except Exception as exc:
+                logger.error(f"Failed to initialize OpenIce agent: {exc}")
+                raise
+        return openice_agent
 
     @app.route("/health", methods=["GET"])
     def health_check() -> Dict[str, str]:
@@ -126,7 +139,7 @@ def create_app() -> Flask:
                 import os
                 from analysis.shooting_drill_feedback import analyze_drill
                 from agents.data_summary_agent import generate_summary_with_gemini
-                    from agents.seth_shooting_agent import generate_sections
+                from agents.seth_shooting_agent import generate_sections
                 
                 # Download video to temporary location for processing
                 logger.info("Downloading video for pose analysis")
@@ -253,6 +266,80 @@ def create_app() -> Flask:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to list results")
             return jsonify({"error": "Failed to list results"}), 500
+
+    # ------------------------------------------------------------------
+    # OpenIce AI Coach Endpoints
+    # ------------------------------------------------------------------
+    
+    @app.route("/api/start-chat", methods=["POST"])
+    def start_chat() -> tuple:
+        """Create a new OpenIce chat session with analysis data."""
+        payload = request.get_json() or {}
+        analysis_data = payload.get("analysis_data")
+        user_id = payload.get("user_id", "anonymous")
+        
+        if not analysis_data:
+            return jsonify({"error": "analysis_data is required"}), 400
+        
+        try:
+            agent = get_openice_agent()
+            session_id = agent.create_chat_session(analysis_data, user_id)
+            
+            return jsonify({
+                "success": True,
+                "session_id": session_id,
+                "user_id": user_id,
+                "message": "OpenIce chat session created successfully"
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to create OpenIce chat session")
+            return jsonify({"error": "Failed to create chat session"}), 500
+    
+    @app.route("/api/ask-question", methods=["POST"])
+    def ask_question() -> tuple:
+        """Ask a question in an existing OpenIce chat session."""
+        payload = request.get_json() or {}
+        session_id = payload.get("session_id")
+        question = payload.get("question")
+        
+        if not session_id or not question:
+            return jsonify({"error": "session_id and question are required"}), 400
+        
+        try:
+            agent = get_openice_agent()
+            result = agent.ask_question(session_id, question)
+            
+            return jsonify({
+                "success": True,
+                "openice_response": result["answer"],
+                "search_queries": result["search_queries"],
+                "sources": result["sources"],
+                "session_id": session_id,
+                "message_count": result["message_count"]
+            })
+        except ValueError as exc:
+            # Session not found
+            return jsonify({"error": str(exc)}), 404
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to process OpenIce question")
+            return jsonify({"error": "Failed to process question"}), 500
+    
+    @app.route("/api/chat-info/<session_id>", methods=["GET"])
+    def get_chat_info(session_id: str) -> tuple:
+        """Get information about a chat session."""
+        try:
+            agent = get_openice_agent()
+            info = agent.get_session_info(session_id)
+            
+            return jsonify({
+                "success": True,
+                "session_info": info
+            })
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 404
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to get chat session info")
+            return jsonify({"error": "Failed to get session info"}), 500
 
     return app
 
