@@ -165,7 +165,7 @@ class FirebaseStorageManager:
                 expiration=timedelta(hours=expiration_hours),
                 method="PUT",
                 content_type=content_type,
-                headers={'x-goog-content-length-range': '0,104857600'},  # 100 MB
+                query_parameters={'x-goog-content-length-range': '0,104857600'},  # 100 MB
                 credentials=signing_creds
             )
         else:
@@ -175,7 +175,7 @@ class FirebaseStorageManager:
                 expiration=timedelta(hours=expiration_hours),
                 method="PUT",
                 content_type=content_type,
-                headers={'x-goog-content-length-range': '0,104857600'},  # 100 MB
+                query_parameters={'x-goog-content-length-range': '0,104857600'},  # 100 MB
             )
 
         return {
