@@ -22,7 +22,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from utils.firebase_storage import FirebaseStorageManager
 from analysis.shooting_drill_feedback import analyze_drill
-from agents.parent_feedback_agent import generate_summary_with_gemini
+from agents.data_summary_agent import generate_summary_with_gemini
 from agents.improvement_coach_agent import generate_coaching_summary
 
 # Setup logging

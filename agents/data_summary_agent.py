@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Parent Feedback Agent (Gemini Flash Lite + local heuristics)
+"""Data Summary Agent (Gemini Flash Lite + local heuristics)
 
 This agent:
 - Interprets the JSON output from shooting_drill_feedback.py
-- Produces a short, parent-friendly summary using deterministic heuristics
+- Produces a short, data-focused summary using deterministic heuristics
 - Optionally sends the draft to a lightweight LLM (Gemini 2.5 Flash Lite)
   for tone polishing, with strict instructions and low token limits
 
 Usage:
-  python parent_feedback_agent.py results/drill/foo_drill_feedback.json
+  python data_summary_agent.py results/drill/foo_drill_feedback.json
 
 Environment:
   GOOGLE_API_KEY (optional). If missing or model fails, falls back to local summary.
@@ -77,7 +77,7 @@ def generate_summary_with_gemini(
     temperature: float = 0.1,
     max_output_tokens: int = 256,
 ) -> str:
-    """Generate parent-friendly summary using Gemini with strict instructions.
+    """Generate data-focused summary using Gemini with strict instructions.
 
     Returns polished text, or raises an error if fails.
     """
@@ -144,7 +144,7 @@ def save_summary_text(video_or_json: Path, summary: str) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Parent Feedback Agent - Interprets shooting_drill_feedback.py JSON output")
+    parser = argparse.ArgumentParser(description="Data Summary Agent - Interprets shooting_drill_feedback.py JSON output")
     parser.add_argument("json_path", help="Path to drill feedback JSON file")
     parser.add_argument("--model", default="gemini-2.5-flash-lite", help="Gemini model name")
     parser.add_argument("--temperature", type=float, default=0.1)

@@ -1,6 +1,6 @@
 ## PuckBuddy Processing Architecture
 
-This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/shooting_drill_feedback.py`, `agents/parent_feedback_agent.py`, and `agents/improvement_coach_agent.py`.
+This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/shooting_drill_feedback.py`, `agents/data_summary_agent.py`, and `agents/improvement_coach_agent.py`.
 
 ### Goals
 - **Reliability**: Avoid client timeouts; handle retries; isolate heavy compute.
@@ -348,7 +348,7 @@ service firebase.storage {
 
 ## Mapping to Current Code
 - Use `analyze_drill(video_path)` from `analysis.shooting_drill_feedback`.
-- Use `generate_summary_with_gemini(raw)` from `agents.parent_feedback_agent`.
+- Use `generate_summary_with_gemini(raw)` from `agents.data_summary_agent`.
 - Use `generate_sections(raw)` from `agents.improvement_coach_agent`.
 - Avoid writing local files in worker; write results to Firestore instead.
 

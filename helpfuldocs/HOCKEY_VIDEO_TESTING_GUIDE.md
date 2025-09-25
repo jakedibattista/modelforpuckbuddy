@@ -117,7 +117,7 @@ We separate the end-user report into two parts using lightweight LLM agents:
 - Parent per-shot report (times and metrics only)
 
 ```bash
-python -m agents.parent_feedback_agent results/drill/<your_video>_drill_feedback.json
+python -m agents.data_summary_agent results/drill/<your_video>_drill_feedback.json
 ```
 
 Output: First line with shot times, then one bullet per shot:
