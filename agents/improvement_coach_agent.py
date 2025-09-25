@@ -238,7 +238,8 @@ def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite")
         "- Focus on actionable, specific improvements with concrete targets\n"
         "- Maintain positive, encouraging tone while being precise\n\n"
         
-        "Output format: Exactly two sections titled 'What went well:' and 'What to work on:' with 2-3 specific bullets each."
+        "Output format: Exactly two sections titled 'What went well:' and 'What to work on:' with 2-3 specific bullets each.\n\n"
+        "IMPORTANT: Output ONLY these two sections. Do NOT add any introductory text, greeting, or additional commentary. Start directly with 'What went well:'"
     )
 
     resp = client.models.generate_content(
@@ -253,7 +254,17 @@ def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite")
     text = (getattr(resp, "text", None) or "").strip()
     if not text:
         raise RuntimeError("Empty response from Gemini")
-    return text
+    
+    # Remove any unwanted introductory text that Gemini might add
+    lines = text.split('\n')
+    start_idx = 0
+    for i, line in enumerate(lines):
+        if line.strip().lower().startswith('what went well'):
+            start_idx = i
+            break
+    
+    # Return only the content starting from "What went well:"
+    return '\n'.join(lines[start_idx:]).strip()
 
 
 def main() -> None:
