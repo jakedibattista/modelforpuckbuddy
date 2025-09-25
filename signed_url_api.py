@@ -126,7 +126,7 @@ def create_app() -> Flask:
                 import os
                 from analysis.shooting_drill_feedback import analyze_drill
                 from agents.data_summary_agent import generate_summary_with_gemini
-                from agents.improvement_coach_agent import generate_sections
+                    from agents.seth_shooting_agent import generate_sections
                 
                 # Download video to temporary location for processing
                 logger.info("Downloading video for pose analysis")

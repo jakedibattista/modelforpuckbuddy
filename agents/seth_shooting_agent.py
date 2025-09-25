@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Improvement Coach Agent (Gemini Flash Lite)
+"""Seth Shooting Agent (Gemini Flash Lite)
 
 Generates TWO sections only from a drill JSON:
 - What went well: 2 to 3 short bullets
 - What to work on: 2 to 3 short bullets
 
 Usage:
-  python improvement_coach_agent.py results/drill/foo_drill_feedback.json
+  python seth_shooting_agent.py results/drill/foo_drill_feedback.json
 """
 
 from __future__ import annotations
@@ -268,7 +268,7 @@ def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Improvement Coach Agent")
+    parser = argparse.ArgumentParser(description="Seth Shooting Agent")
     parser.add_argument("json_path", help="Path to drill feedback JSON file")
     args = parser.parse_args()
 

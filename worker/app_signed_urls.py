@@ -23,7 +23,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utils.firebase_storage import FirebaseStorageManager
 from analysis.shooting_drill_feedback import analyze_drill
 from agents.data_summary_agent import generate_summary_with_gemini
-from agents.improvement_coach_agent import generate_coaching_summary
+from agents.seth_shooting_agent import generate_sections
 
 # Setup logging
 logging.basicConfig(
@@ -85,7 +85,7 @@ class SignedURLWorker:
             parent_summary = generate_summary_with_gemini(analysis_results)
             
             logger.info("Generating coach analysis")
-            coach_analysis = generate_coaching_summary(analysis_results)
+            coach_analysis = generate_sections(analysis_results)
             
             # Step 5: Upload results to Firebase Storage
             logger.info("Uploading analysis results")
@@ -240,7 +240,7 @@ def process_video_file_directly(video_path: str, user_id: str) -> dict:
         
         # Generate summaries
         parent_summary = generate_summary_with_gemini(analysis_results)
-        coach_analysis = generate_coaching_summary(analysis_results)
+        coach_analysis = generate_sections(analysis_results)
         
         return {
             'analysis': analysis_results,

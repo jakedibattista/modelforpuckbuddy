@@ -1,6 +1,6 @@
 ## PuckBuddy Processing Architecture
 
-This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/shooting_drill_feedback.py`, `agents/data_summary_agent.py`, and `agents/improvement_coach_agent.py`.
+This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/shooting_drill_feedback.py`, `agents/data_summary_agent.py`, and `agents/seth_shooting_agent.py`.
 
 ### Goals
 - **Reliability**: Avoid client timeouts; handle retries; isolate heavy compute.
@@ -61,7 +61,7 @@ Collection: `jobs`
 - `delivery_method: string` — `firestore` (default) or `signed_urls`
 - `drill: map` — result of `analyze_drill` (subset) - only if delivery_method is `firestore`
 - `parent_summary: string` — text from `parent_feedback_agent` - only if delivery_method is `firestore`
-- `coach_summary: string` — text from `improvement_coach_agent` - only if delivery_method is `firestore`
+- `coach_summary: string` — text from `seth_shooting_agent` - only if delivery_method is `firestore`
 - `result_urls: map` — signed download URLs for results - only if delivery_method is `signed_urls`
   - `analysis_url: string` — signed URL for analysis JSON (24h expiration)
   - `parent_summary_url: string` — signed URL for parent summary text (24h expiration)  
@@ -349,7 +349,7 @@ service firebase.storage {
 ## Mapping to Current Code
 - Use `analyze_drill(video_path)` from `analysis.shooting_drill_feedback`.
 - Use `generate_summary_with_gemini(raw)` from `agents.data_summary_agent`.
-- Use `generate_sections(raw)` from `agents.improvement_coach_agent`.
+- Use `generate_sections(raw)` from `agents.seth_shooting_agent`.
 - Avoid writing local files in worker; write results to Firestore instead.
 
 ## iOS Listener Notes

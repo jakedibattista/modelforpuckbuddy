@@ -5,7 +5,7 @@ Receives Pub/Sub push messages containing `{ "jobId": "..." }` in the data paylo
 Looks up the job in Firestore, downloads the video from Firebase Storage, runs
 analysis via `analysis.shooting_drill_feedback.analyze_drill`, then generates summaries using
 `agents.data_summary_agent.generate_summary_with_gemini` and
-`agents.improvement_coach_agent.generate_sections`.
+`agents.seth_shooting_agent.generate_sections`.
 
 Environment variables:
 - PB_STORAGE_BUCKET: GCS bucket name for Firebase Storage (e.g., your-project.appspot.com)
@@ -33,7 +33,7 @@ from google.cloud import storage  # type: ignore
 # Import local analysis modules from repository
 from analysis.shooting_drill_feedback import analyze_drill  # type: ignore
 from agents.data_summary_agent import generate_summary_with_gemini  # type: ignore
-from agents.improvement_coach_agent import generate_sections  # type: ignore
+from agents.seth_shooting_agent import generate_sections  # type: ignore
 
 
 app = FastAPI()

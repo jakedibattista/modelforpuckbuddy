@@ -126,7 +126,7 @@ Output: First line with shot times, then one bullet per shot:
 - Improvement coaching sections (What went well / What to work on)
 
 ```bash
-python -m agents.improvement_coach_agent results/drill/<your_video>_drill_feedback.json
+python -m agents.seth_shooting_agent results/drill/<your_video>_drill_feedback.json
 ```
 
 Output: Two sections with 2–3 concise, coach-like bullets each.

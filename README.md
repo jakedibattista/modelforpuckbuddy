@@ -13,7 +13,7 @@ modelforpuckbuddy/
   agents/                  # Text-generation agents
     __init__.py
     data_summary_agent.py           # per-shot data analysis report
-    improvement_coach_agent.py      # 2-section coach summary
+            seth_shooting_agent.py          # 2-section coach summary
   worker/                  # Cloud Run worker services
     app.py                 # Original worker for Pub/Sub processing
     app_signed_urls.py     # Signed URL worker for secure processing
@@ -60,7 +60,7 @@ export GOOGLE_API_KEY=YOUR_KEY
 
 3) Run agents against an existing analysis JSON:
 ```bash
-python -m agents.improvement_coach_agent results/drill/kidshoot4_drill_feedback.json
+python -m agents.seth_shooting_agent results/drill/kidshoot4_drill_feedback.json
 python -m agents.data_summary_agent results/drill/kidshoot4_drill_feedback.json
 ```
 
