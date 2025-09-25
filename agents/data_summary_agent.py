@@ -47,8 +47,29 @@ def load_feedback_json(json_path: Path) -> Dict[str, Any]:
     return load_json_file(json_path)
 
 
+def format_timestamp(time_sec: float) -> str:
+    """Format time in seconds to MM:SS format.
+    
+    Args:
+        time_sec: Time in seconds (can have decimal places)
+        
+    Returns:
+        Formatted time string in MM:SS format
+    """
+    if time_sec == "N/A" or time_sec is None:
+        return "N/A"
+    
+    try:
+        total_seconds = int(round(float(time_sec)))
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        return f"{minutes:02d}:{seconds:02d}"
+    except (ValueError, TypeError):
+        return "N/A"
+
+
 def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate shot data and mark missing fields as N/A.
+    """Validate shot data and extract all relevant metrics.
 
     Args:
         shot: One shot dict from the feedback JSON
@@ -58,17 +79,111 @@ def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
     """
     result = {}
     
-    # Required fields - use N/A if missing
+    # Basic timing and metrics
     result["time"] = shot.get("shot_time_sec", "N/A")
-    result["knee_deg"] = shot.get("knee_bend_min_deg", "N/A")
-    result["knee_score"] = shot.get("knee_bend_score", "N/A")
-    result["knee_valid"] = shot.get("knee_bend_valid", "N/A")
-    result["hip_drive"] = shot.get("hip_drive", "N/A")
-    result["hip_drive_good"] = shot.get("hip_drive_good", "N/A")
-    result["control_smoothness"] = shot.get("control_smoothness", "N/A")
+    result["time_formatted"] = format_timestamp(result["time"])
     
+    # Front knee angle (use enhanced data if available, fallback to legacy)
+    front_knee = None
+    if shot.get("lower_body_triangle") and shot["lower_body_triangle"].get("front_knee_bend_deg") is not None:
+        front_knee = shot["lower_body_triangle"]["front_knee_bend_deg"]
+    else:
+        front_knee = shot.get("knee_bend_min_deg")
+    result["front_knee_angle"] = f"{front_knee:.0f}°" if front_knee is not None else "not tracked"
+    
+    # Hip drive
+    hip_drive = shot.get("hip_drive", 0.0)
+    hip_drive_good = shot.get("hip_drive_good", False)
+    if hip_drive is not None and hip_drive != "N/A":
+        result["hip_drive"] = f"{hip_drive:.3f} ({'good' if hip_drive_good else 'needs work'})"
+    else:
+        result["hip_drive"] = "not tracked"
+    
+    # Wrist steadiness (control smoothness)
+    control = shot.get("control_smoothness")
+    if control is not None and control != "N/A":
+        if control >= 0.6:
+            label = "smooth"
+        elif control <= 0.3:
+            label = "jerky"
+        else:
+            label = "mixed"
+        result["wrist_steadiness"] = label
+    else:
+        result["wrist_steadiness"] = "not tracked"
+    
+    # Head position (from enhanced metrics)
+    head_pos = shot.get("head_position", {})
+    if head_pos and any(v is not None for v in head_pos.values()):
+        # Average the available head metrics
+        head_values = [v for v in head_pos.values() if v is not None]
+        if head_values:
+            avg_head = sum(head_values) / len(head_values)
+            if avg_head >= 0.8:
+                result["head_position"] = "excellent"
+            elif avg_head >= 0.6:
+                result["head_position"] = "good"
+            else:
+                result["head_position"] = "needs work"
+        else:
+            result["head_position"] = "not tracked"
+    else:
+        result["head_position"] = "not tracked"
+    
+    # Back leg angle
+    back_leg = None
+    if shot.get("lower_body_triangle") and shot["lower_body_triangle"].get("back_leg_extension_deg") is not None:
+        back_leg = shot["lower_body_triangle"]["back_leg_extension_deg"]
+    
+    if back_leg is not None:
+        result["back_leg_angle"] = f"{back_leg:.0f}°"
+        if back_leg < 150:
+            result["back_leg_angle"] += " (too bent)"
+    else:
+        result["back_leg_angle"] = "not tracked"
     
     return result
+
+
+def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
+    """Generate formatted summary using local processing.
+    
+    Args:
+        raw: Full analysis result dictionary
+        
+    Returns:
+        Formatted summary string in the new structured format
+    """
+    shots = raw.get("shots", [])
+    if not shots:
+        return "No shots detected in video"
+    
+    # Format timestamp header
+    timestamps = []
+    for shot in shots:
+        time_sec = shot.get("shot_time_sec")
+        if time_sec is not None:
+            timestamps.append(format_timestamp(time_sec))
+        else:
+            timestamps.append("N/A")
+    
+    timestamp_line = f"Shots detected at timestamps: {', '.join(timestamps)}"
+    
+    # Format each shot
+    shot_lines = []
+    for i, shot in enumerate(shots, 1):
+        validated = validate_shot_data(shot)
+        
+        shot_block = f"Shot {i}: time {validated['time_formatted']}:\n"
+        shot_block += f"front knee angle: {validated['front_knee_angle']}\n"
+        shot_block += f"hip drive: {validated['hip_drive']}\n"
+        shot_block += f"wrist steadiness: {validated['wrist_steadiness']}\n"
+        shot_block += f"head position: {validated['head_position']}\n"
+        shot_block += f"back leg angle: {validated['back_leg_angle']}"
+        
+        shot_lines.append(shot_block)
+    
+    return timestamp_line + "\n\n" + "\n\n".join(shot_lines)
 
 
 def generate_summary_with_gemini(
@@ -91,22 +206,31 @@ def generate_summary_with_gemini(
     try:
         client = genai.Client(api_key=api_key)
         system = (
-            "You are a supportive youth hockey coach. Produce ONLY the per-shot report from the provided drill JSON. "
-            "Enhanced form analysis includes: stance_analysis, head_position, upper_body_square, lower_body_triangle. "
-            "Rubric: Knee (score) ≥0.7 = good; 0.4–0.69 = moderate; <0.4 = needs work. Hip drive ≥0.3 = good drive. "
-            "Wrist steadiness (formerly 'control') labels: ≥0.6 smooth; ≤0.3 jerky; else mixed. "
-            "Form metrics (0-1 scale): ≥0.8 excellent; 0.6-0.79 good; 0.4-0.59 fair; <0.4 needs work. "
-            "Head position: forward_lean, eye_level, target_facing all measure proper head positioning. "
-            "Upper body: shoulder_level, arm_extension, target_alignment measure shooting form 'square'. "
-            "Lower body: front_knee_bend_deg (degrees), back_leg_extension_deg (should be 160-180°), stance_width_ratio (wider is fine). "
-            "Naming: say 'front knee bend' for front knee, 'hip drive' for hip, 'head position' for head metrics. "
-            "Presentation rules: Report FRONT knee bend as degrees only (use front_knee_bend_deg from lower_body_triangle). "
-            "For hip drive, include the 0..1 value and good/not good. For wrist steadiness, include only the label (no number). "
-            "For head/upper/lower body, mention if excellent (≥0.8) or needs work (<0.6). "
-            "Back leg extension: comment if <150° (too bent). If field missing or N/A, say 'not tracked'. "
-            "Output format: First line 'Shots detected at timestamp: times …'; then per-shot bullets like: "
-            "'time — front knee bend XXX°, hip drive H.HHH (good/not good), wrist steadiness: LABEL, head position: excellent/good/needs work, back leg: XXX° (too bent if <150°)'. "
-            "Do NOT include any other sections (no 'What went well' or 'What to work on'). Keep it concise."
+            "You are a data analysis system. Format the shooting drill JSON data into the EXACT structured format specified below. "
+            "CRITICAL: Follow the format precisely with no deviations.\n\n"
+            
+            "Time formatting: Convert all shot_time_sec values to MM:SS format (e.g., 8.2 seconds becomes 00:08).\n"
+            
+            "Metrics interpretation:\n"
+            "- Front knee angle: Use front_knee_bend_deg from lower_body_triangle if available, else knee_bend_min_deg\n"
+            "- Hip drive: Format as 'X.XXX (good/needs work)' based on hip_drive value and hip_drive_good boolean\n"
+            "- Wrist steadiness: Convert control_smoothness to labels: ≥0.6='smooth', ≤0.3='jerky', else='mixed'\n"
+            "- Head position: Average head_position metrics (forward_lean, eye_level, target_facing): ≥0.8='excellent', ≥0.6='good', else='needs work'\n"
+            "- Back leg angle: Use back_leg_extension_deg from lower_body_triangle, add '(too bent)' if <150°\n"
+            "- For any missing data, use 'not tracked'\n\n"
+            
+            "EXACT OUTPUT FORMAT:\n"
+            "Shots detected at timestamps: MM:SS, MM:SS, MM:SS\n\n"
+            "Shot 1: time MM:SS:\n"
+            "front knee angle: XXX°\n"
+            "hip drive: X.XXX (good/needs work)\n"
+            "wrist steadiness: smooth/jerky/mixed\n"
+            "head position: excellent/good/needs work\n"
+            "back leg angle: XXX°\n\n"
+            "Shot 2: time MM:SS:\n"
+            "[repeat format for each shot]\n\n"
+            
+            "Do NOT add any other text, explanations, or sections. Output ONLY the structured data in this exact format."
         )
 
         resp = client.models.generate_content(
@@ -149,6 +273,7 @@ def main() -> None:
     parser.add_argument("--model", default="gemini-2.5-flash-lite", help="Gemini model name")
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--max_tokens", type=int, default=256)
+    parser.add_argument("--local", action="store_true", help="Force local formatting (skip Gemini)")
     args = parser.parse_args()
 
     source_path = Path(args.json_path)
@@ -157,13 +282,20 @@ def main() -> None:
     
     result = load_feedback_json(source_path)
 
-    # Always use Gemini - no fallback
-    summary = generate_summary_with_gemini(
-        result,
-        model_name=args.model,
-        temperature=args.temperature,
-        max_output_tokens=args.max_tokens,
-    )
+    # Use local formatting if requested, otherwise try Gemini with fallback
+    if args.local:
+        summary = format_shot_summary_locally(result)
+    else:
+        try:
+            summary = generate_summary_with_gemini(
+                result,
+                model_name=args.model,
+                temperature=args.temperature,
+                max_output_tokens=args.max_tokens,
+            )
+        except Exception as e:
+            print(f"Gemini formatting failed ({e}), using local formatting")
+            summary = format_shot_summary_locally(result)
 
     out_path = save_summary_text(source_path, summary)
     print(summary)
