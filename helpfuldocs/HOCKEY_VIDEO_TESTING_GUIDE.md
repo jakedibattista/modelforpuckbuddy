@@ -133,7 +133,56 @@ Output: Two sections with 2–3 concise, coach-like bullets each.
 
 Note: Set `GOOGLE_API_KEY` in your environment or `.env` for the agents. We auto-load `.env` if present.
 
-### Step 4: Review Results
+### Step 5: Test OpenIce AI Coach (Optional)
+
+OpenIce is an intelligent conversational coach that combines your technical analysis with real-time hockey knowledge from web search.
+
+#### Start a conversation with your analysis data:
+
+```bash
+python -m agents.openice_agent --analysis-file results/drill/<your_video>_drill_feedback.json --question "How can my shot look more like Connor McDavid?"
+```
+
+#### Example OpenIce Questions:
+
+**Player Comparisons:**
+```bash
+python -m agents.openice_agent --analysis-file results/drill/kidshoot3_drill_feedback.json --question "How can I shoot like Sidney Crosby?"
+```
+
+**Practice Planning:**
+```bash
+python -m agents.openice_agent --analysis-file results/drill/kidshoot3_drill_feedback.json --question "What's the most important thing to work on this week?"
+```
+
+**Technique Analysis:**
+```bash
+python -m agents.openice_agent --analysis-file results/drill/kidshoot3_drill_feedback.json --question "Why is my wrist movement jerky in shot 3?"
+```
+
+**Follow-up Questions (using session ID):**
+```bash
+# After your first question, use the session ID for follow-ups:
+python -m agents.openice_agent --session-id [SESSION_ID_FROM_FIRST_RESPONSE] --question "What drill should I focus on for that?"
+```
+
+#### OpenIce Output Example:
+```
+🏒 OpenIce Response:
+Based on your data and McDavid's documented technique:
+
+Your shots vs McDavid:
+• Hip drive: Your 0.456 at 00:15 is good - McDavid emphasizes explosive rotation
+• Knee bend: Your 142° needs work - McDavid gets down to 95-105° 
+• Release time: Your 1.8s vs his lightning 0.9s
+
+Focus on shot 2 (00:15) - you almost had McDavid's hip drive there!
+
+🔍 Searched for: Connor McDavid shooting technique, McDavid knee bend mechanics
+📚 Sources: NHL.com, Hockey Training Pro, Elite Prospects
+```
+
+### Step 6: Review Results
 
 Results will be saved in `results/drill/`:
 

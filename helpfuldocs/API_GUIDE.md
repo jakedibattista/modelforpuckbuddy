@@ -291,6 +291,179 @@ The API now returns concise, generic error messages (no internal stack traces):
 
 ---
 
+## 🤖 OpenIce AI Coach (Optional Enhancement)
+
+**What is OpenIce?** An intelligent conversational AI coach that provides personalized hockey advice based on your video analysis data. Players can ask questions like "How can I shoot like Connor McDavid?" or "What drill should I focus on this week?"
+
+### Key Features:
+- 💬 **Conversational AI** - Remembers previous questions in chat sessions
+- 🌐 **Real-time Research** - Uses Google Search for current hockey knowledge  
+- 🎯 **Personalized Advice** - References your specific shot data and timestamps
+- 🏒 **Player Comparisons** - Compare technique to NHL stars like McDavid, Crosby, Ovechkin
+- 📚 **Practice Recommendations** - Suggests specific drills and training methods
+
+### OpenIce API Endpoints
+
+#### 1. Start Chat Session
+Create a new conversation with your analysis data:
+
+```bash
+POST /api/start-chat
+Content-Type: application/json
+
+{
+  "analysis_data": "**Shots detected at timestamps:** 00:08, 00:15...",
+  "user_id": "your-user-123"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "session_id": "abc123-session-id",
+  "user_id": "your-user-123",
+  "message": "OpenIce chat session created successfully"
+}
+```
+
+#### 2. Ask Questions
+Continue the conversation with coaching questions:
+
+```bash
+POST /api/ask-question  
+Content-Type: application/json
+
+{
+  "session_id": "abc123-session-id",
+  "question": "How can my shot look more like Connor McDavid?"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "openice_response": "Based on your data and McDavid's technique: Your hip drive (0.456) at 00:15 is good - McDavid emphasizes explosive rotation. However, your knee bend needs work - McDavid gets down to 95-105° vs your 142°...",
+  "search_queries": ["Connor McDavid shooting technique", "McDavid knee bend mechanics"],
+  "sources": ["NHL.com", "Hockey Training Pro", "Elite Prospects"],
+  "session_id": "abc123-session-id",
+  "message_count": 1
+}
+```
+
+#### 3. Get Session Info
+Check conversation details:
+
+```bash
+GET /api/chat-info/abc123-session-id
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "session_info": {
+    "session_id": "abc123-session-id",
+    "user_id": "your-user-123",
+    "created_at": "2025-09-25T18:30:00Z",
+    "last_activity": "2025-09-25T18:35:00Z", 
+    "message_count": 3
+  }
+}
+```
+
+### Complete OpenIce Integration Example
+
+```javascript
+// After getting video analysis results:
+async function startCoachingSession(analysisData, userId) {
+  // 1. Create OpenIce chat session
+  const chatResponse = await fetch(`${baseUrl}/api/start-chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      analysis_data: analysisData,
+      user_id: userId
+    })
+  });
+  
+  const { session_id } = await chatResponse.json();
+  
+  // 2. Ask coaching questions
+  const questionResponse = await fetch(`${baseUrl}/api/ask-question`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: session_id,
+      question: "How can I shoot like Connor McDavid?"
+    })
+  });
+  
+  const coaching = await questionResponse.json();
+  
+  // Display personalized coaching advice
+  console.log('OpenIce Coach:', coaching.openice_response);
+  console.log('Research Sources:', coaching.sources);
+  
+  return session_id; // Save for follow-up questions
+}
+
+// Follow-up questions in the same session
+async function askFollowUp(sessionId, question) {
+  const response = await fetch(`${baseUrl}/api/ask-question`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      question: question
+    })
+  });
+  
+  return await response.json();
+}
+```
+
+### Example OpenIce Questions
+
+**Technique Comparisons:**
+- "How can my shot look more like Sidney Crosby?"
+- "What does Connor McDavid do differently in his release?"
+- "Compare my hip drive to Alex Ovechkin's technique"
+
+**Practice Planning:**
+- "What's the most important thing to work on this week?"
+- "What drill should I focus on for my knee bend?"
+- "How can I improve my wrist steadiness?"
+
+**Specific Analysis:**
+- "Why was my shot at 00:15 better than the others?"
+- "What's causing my jerky wrist movement?"
+- "How can I improve my front knee angle?"
+
+### Error Handling
+
+```javascript
+try {
+  const result = await askQuestion(sessionId, question);
+  if (result.success) {
+    displayCoaching(result.openice_response);
+  } else {
+    console.error('OpenIce error:', result.error);
+  }
+} catch (error) {
+  if (error.status === 404) {
+    console.log('Session expired, create new session');
+  } else {
+    console.error('Network error:', error);
+  }
+}
+```
+
+**Note:** OpenIce is completely optional and additive. Your existing video analysis workflow continues to work identically whether you use OpenIce features or not.
+
+---
+
 ## 🚀 Ready to Integrate!
 
 1. **Copy the JavaScript example** for your preferred workflow

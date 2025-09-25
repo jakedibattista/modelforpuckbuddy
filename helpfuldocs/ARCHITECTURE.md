@@ -1,6 +1,6 @@
 ## PuckBuddy Processing Architecture
 
-This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/shooting_drill_feedback.py`, `agents/data_summary_agent.py`, and `agents/seth_shooting_agent.py`.
+This document describes the end-to-end design to let the iOS app send videos for analysis and receive feedback using the current Python modules: `analysis/shooting_drill_feedback.py`, `agents/data_summary_agent.py`, `agents/seth_shooting_agent.py`, and the new `agents/openice_agent.py` for conversational AI coaching.
 
 ### Goals
 - **Reliability**: Avoid client timeouts; handle retries; isolate heavy compute.
@@ -22,7 +22,8 @@ This document describes the end-to-end design to let the iOS app send videos for
 3. **App uploads video** directly to Firebase Storage using signed URL
 4. **App requests analysis**: `POST /api/analyze-video` (waits for completion, 5 min timeout)
 5. **Backend processes video**: Downloads, runs pose analysis, generates AI summaries
-6. **Backend returns results**: Parent summary + coach summary as plain text in JSON response
+6. **Backend returns results**: Data analysis + coach summary as plain text in JSON response
+7. **Optional**: **App starts OpenIce chat**: `POST /api/start-chat` with analysis data for conversational coaching
 
 ### Advanced Workflow (For Progress Updates)
 1-3. Same as simple workflow (upload)
@@ -60,8 +61,8 @@ Collection: `jobs`
 - `options: map` — optional runtime knobs, e.g., `{ stride: 2, width: 960 }`
 - `delivery_method: string` — `firestore` (default) or `signed_urls`
 - `drill: map` — result of `analyze_drill` (subset) - only if delivery_method is `firestore`
-- `parent_summary: string` — text from `parent_feedback_agent` - only if delivery_method is `firestore`
-- `coach_summary: string` — text from `seth_shooting_agent` - only if delivery_method is `firestore`
+- `data_analysis: string` — text from `data_summary_agent` (structured shot data) - only if delivery_method is `firestore`
+- `coach_summary: string` — text from `seth_shooting_agent` (coaching feedback) - only if delivery_method is `firestore`
 - `result_urls: map` — signed download URLs for results - only if delivery_method is `signed_urls`
   - `analysis_url: string` — signed URL for analysis JSON (24h expiration)
   - `parent_summary_url: string` — signed URL for parent summary text (24h expiration)  
@@ -346,16 +347,50 @@ service firebase.storage {
 - Performance: keep `width=960`, `stride=2` as defaults; consider `fast` option for larger stride.
 - Cleanup: daily job deletes completed/failed `jobs` and uploaded user videos older than 24 hours (ephemeral policy).
 
+## AI Agents Architecture
+
+### Core Analysis Agents (Used in Video Processing)
+- **`data_summary_agent.py`**: Structured data analysis with timestamps and metrics
+- **`seth_shooting_agent.py`**: Coaching feedback with "What went well" and "What to work on" sections
+
+### OpenIce Conversational Agent (Optional Enhancement)
+- **`agents/openice_agent.py`**: Intelligent conversational coach using Gemini with Google Search
+- **Purpose**: Answer follow-up questions about technique, provide player comparisons, suggest drills
+- **Integration**: Completely additive - existing workflows unchanged
+- **Session Management**: In-memory chat sessions with cleanup (24h expiration)
+
+### OpenIce API Endpoints
+```
+POST /api/start-chat       - Create chat session with analysis data
+POST /api/ask-question     - Ask questions in existing session  
+GET  /api/chat-info/<id>   - Get session information
+```
+
+### OpenIce Usage Flow
+1. **After video analysis**: Client optionally creates OpenIce chat session with `data_analysis` result
+2. **Conversational Q&A**: Client asks questions like "How can I shoot like McDavid?"
+3. **Intelligent responses**: OpenIce provides personalized advice using web search + technical data
+4. **Session persistence**: Chat memory maintained for follow-up questions
+
+### OpenIce Features
+- 🧠 **Contextual AI**: References specific shots and timestamps from analysis
+- 🌐 **Real-time research**: Google Search integration for current hockey knowledge
+- 🏒 **Player comparisons**: Compare technique to NHL players (McDavid, Crosby, Ovechkin)
+- 📚 **Practice recommendations**: Specific drills and training methods
+- 💬 **Conversation memory**: Maintains context across multiple questions
+
 ## Mapping to Current Code
 - Use `analyze_drill(video_path)` from `analysis.shooting_drill_feedback`.
 - Use `generate_summary_with_gemini(raw)` from `agents.data_summary_agent`.
 - Use `generate_sections(raw)` from `agents.seth_shooting_agent`.
+- Use `OpenIceAgent()` from `agents.openice_agent` for conversational coaching.
 - Avoid writing local files in worker; write results to Firestore instead.
 
 ## iOS Listener Notes
 - Subscribe to `jobs/{jobId}` after creation and render:
   - `status` and `progress` for a progress bar.
-  - When `completed`, display `parent_summary` and `coach_summary`.
+  - When `completed`, display `data_analysis` and `coach_summary`.
+- **Optional OpenIce Integration**: After displaying results, offer "Ask OpenIce" feature to start conversational coaching.
 - Optionally call a Cloud Function to mark job for deletion once shown.
 
 ---
