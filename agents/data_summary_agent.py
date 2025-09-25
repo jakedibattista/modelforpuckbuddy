@@ -168,19 +168,19 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
         else:
             timestamps.append("N/A")
     
-    timestamp_line = f"Shots detected at timestamps: {', '.join(timestamps)}"
+    timestamp_line = f"**Shots detected at timestamps:** {', '.join(timestamps)}"
     
     # Format each shot
     shot_lines = []
     for i, shot in enumerate(shots, 1):
         validated = validate_shot_data(shot)
         
-        shot_block = f"Shot {i}: {validated['time_formatted']}:\n"
-        shot_block += f"head position: {validated['head_position']}\n"
-        shot_block += f"wrist steadiness: {validated['wrist_steadiness']}\n"
-        shot_block += f"hip drive: {validated['hip_drive']}\n"
-        shot_block += f"front knee angle: {validated['front_knee_angle']}\n"
-        shot_block += f"back leg angle: {validated['back_leg_angle']}"
+        shot_block = f"**Shot {i}: {validated['time_formatted']}:**\n"
+        shot_block += f"**head position:** {validated['head_position']}\n"
+        shot_block += f"**wrist steadiness:** {validated['wrist_steadiness']}\n"
+        shot_block += f"**hip drive:** {validated['hip_drive']}\n"
+        shot_block += f"**front knee angle:** {validated['front_knee_angle']}\n"
+        shot_block += f"**back leg angle:** {validated['back_leg_angle']}"
         
         shot_lines.append(shot_block)
     
@@ -221,14 +221,14 @@ def generate_summary_with_gemini(
             "- For any missing data, use 'not tracked'\n\n"
             
             "EXACT OUTPUT FORMAT:\n"
-            "Shots detected at timestamps: MM:SS, MM:SS, MM:SS\n\n"
-            "Shot 1: MM:SS:\n"
-            "head position: excellent/good/needs work (X.XX)\n"
-            "wrist steadiness: smooth/jerky/mixed (X.XX)\n"
-            "hip drive: X.XXX (good/needs work)\n"
-            "front knee angle: XXX°\n"
-            "back leg angle: XXX°\n\n"
-            "Shot 2: MM:SS:\n"
+            "**Shots detected at timestamps:** MM:SS, MM:SS, MM:SS\n\n"
+            "**Shot 1: MM:SS:**\n"
+            "**head position:** excellent/good/needs work (X.XX)\n"
+            "**wrist steadiness:** smooth/jerky/mixed (X.XX)\n"
+            "**hip drive:** X.XXX (good/needs work)\n"
+            "**front knee angle:** XXX°\n"
+            "**back leg angle:** XXX°\n\n"
+            "**Shot 2: MM:SS:**\n"
             "[repeat format for each shot]\n\n"
             
             "Do NOT add any other text, explanations, or sections. Output ONLY the structured data in this exact format."
