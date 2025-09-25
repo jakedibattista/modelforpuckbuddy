@@ -1,22 +1,15 @@
-## iOS Integration Guide: Upload → Analyze → Receive Feedback
+# 🏒 iOS Integration Guide - Puck Buddy Video Analysis
 
-This guide shows how to integrate the Puck Buddy hockey analysis API into your iOS app.
+Quick guide to integrate hockey video analysis into your iOS app using the simple API workflow.
 
-**📖 Quick Reference**: See `/helpfuldocs/API_GUIDE.md` for complete API documentation with JavaScript examples.
+## Prerequisites
 
-**Two Integration Approaches:**
-- **Simple**: Upload video → Get analysis results directly (recommended for most apps)
-- **Advanced**: More control with real-time progress updates and custom result handling
-
-### Prerequisites & Setup
-
-1. **Add Firebase to your iOS project:**
+1. **Add Firebase to your iOS project**
    - Download `GoogleService-Info.plist` from Firebase Console
-   - Add to your Xcode project (remember to add to target)
-   - Install Firebase via SPM: `https://github.com/firebase/firebase-ios-sdk`
-   - Import required modules: `FirebaseAuth`, `FirebaseFirestore`, `FirebaseStorage`, `FirebaseMessaging`
+   - Add to Xcode project and target
+   - Install Firebase SDK via SPM: `https://github.com/firebase/firebase-ios-sdk`
 
-2. **Configure in AppDelegate or App struct:**
+2. **Configure Firebase in your app**
 ```swift
 import Firebase
 
@@ -29,763 +22,319 @@ struct PuckBuddyApp: App {
 }
 ```
 
-3. **Project settings:**
-   - Firebase Storage bucket: `puck-buddy.firebasestorage.app`
-   - Firestore collection: `jobs`
-   - Storage path convention: `users/{uid}/{uuid}.mov`
-   - **Backend API URL**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+3. **Project settings**
+   - **Backend API**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+   - **Firebase Storage bucket**: `puck-buddy.firebasestorage.app`
 
-### Error Handling
-```swift
-enum VideoAnalysisError: Error, LocalizedError {
-    case notAuthenticated
-    case uploadFailed(Error)
-    case jobCreationFailed(Error)
-    case processingFailed(String)
-    case networkError
-    case invalidVideo
-    
-    var errorDescription: String? {
-        switch self {
-        case .notAuthenticated: return "User not signed in"
-        case .uploadFailed(let error): return "Upload failed: \(error.localizedDescription)"
-        case .jobCreationFailed(let error): return "Job creation failed: \(error.localizedDescription)"
-        case .processingFailed(let message): return "Processing failed: \(message)"
-        case .networkError: return "Network connection error"
-        case .invalidVideo: return "Invalid video format or size"
-        }
-    }
-}
-```
+## Simple Integration (Recommended)
 
-### Complete Service Implementation (Option A: Direct Upload)
+### VideoAnalysisService
 ```swift
 import Foundation
 import Firebase
 import FirebaseAuth
-import FirebaseFirestore
-import FirebaseStorage
-import FirebaseMessaging
 
 @MainActor
 class VideoAnalysisService: ObservableObject {
-    @Published var isUploading = false
-    @Published var uploadProgress: Double = 0
-    @Published var analysisProgress = 0
-    @Published var currentStatus = ""
-    @Published var parentSummary: String?
+    @Published var isProcessing = false
+    @Published var progress = 0.0
+    @Published var dataAnalysis: String?
     @Published var coachSummary: String?
-    @Published var error: VideoAnalysisError?
+    @Published var error: String?
     
-    private var uploadTask: StorageUploadTask?
-    private var jobListener: ListenerRegistration?
+    private let apiBase = "https://puck-buddy-model-22317830094.us-central1.run.app"
     
-    // MARK: - Public Interface
-    
-    func submitVideo(_ videoURL: URL) async throws -> (parentSummary: String, coachSummary: String) {
-        reset()
-        
-        guard Auth.auth().currentUser != nil else {
-            throw VideoAnalysisError.notAuthenticated
-        }
-        
-        // Validate video (optional - add your constraints)
-        try validateVideo(videoURL)
-        
-        // Upload with progress
-        let storagePath = try await uploadVideoWithProgress(videoURL)
-        
-        // Create job and listen
-        let jobId = try await createJob(storagePath: storagePath)
-        
-        // Wait for completion
-        return try await waitForCompletion(jobId: jobId)
-    }
-    
-    func cancelCurrentJob() {
-        uploadTask?.cancel()
-        jobListener?.remove()
-        reset()
-    }
-    
-    func fetchLatestResult() async -> (jobId: String?, parentSummary: String?, coachSummary: String?)? {
-        guard let uid = Auth.auth().currentUser?.uid else { return nil }
-        
-        do {
-            let snapshot = try await Firestore.firestore().collection("jobs")
-                .whereField("userId", isEqualTo: uid)
-                .order(by: "createdAt", descending: true)
-                .limit(to: 1)
-                .getDocuments()
-            
-            guard let doc = snapshot.documents.first else { return nil }
-            let data = doc.data()
-            return (
-                jobId: doc.documentID,
-                parentSummary: data["parent_summary"] as? String,
-                coachSummary: data["coach_summary"] as? String
-            )
-        } catch {
-            return nil
-        }
-    }
-    
-    // MARK: - Private Implementation
-    
-    private func reset() {
-        isUploading = false
-        uploadProgress = 0
-        analysisProgress = 0
-        currentStatus = ""
-        parentSummary = nil
-        coachSummary = nil
-        error = nil
-        jobListener?.remove()
-    }
-    
-    private func validateVideo(_ url: URL) throws {
-        // Add your video validation logic
-        let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        if fileSize > 100_000_000 { // 100MB limit example
-            throw VideoAnalysisError.invalidVideo
-        }
-    }
-    
-    private func uploadVideoWithProgress(_ videoURL: URL) async throws -> String {
-        guard let uid = Auth.auth().currentUser?.uid else {
-            throw VideoAnalysisError.notAuthenticated
-        }
-        
-        isUploading = true
-        currentStatus = "Uploading video..."
-        
-        let path = "users/\(uid)/\(UUID().uuidString).mov"
-        let ref = Storage.storage().reference(withPath: path)
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            uploadTask = ref.putFile(from: videoURL, metadata: nil) { [weak self] _, error in
-                DispatchQueue.main.async {
-                    self?.isUploading = false
-                }
-                
-                if let error = error {
-                    continuation.resume(throwing: VideoAnalysisError.uploadFailed(error))
-                } else {
-                    continuation.resume(returning: path)
-                }
-            }
-            
-            uploadTask?.observe(.progress) { [weak self] snapshot in
-                DispatchQueue.main.async {
-                    let progress = Double(snapshot.progress?.fractionCompleted ?? 0)
-                    self?.uploadProgress = progress
-                }
-            }
-        }
-    }
-    
-    private func createJob(storagePath: String) async throws -> String {
-        guard let uid = Auth.auth().currentUser?.uid else {
-            throw VideoAnalysisError.notAuthenticated
-        }
-        
-        currentStatus = "Creating analysis job..."
-        
-        let jobRef = Firestore.firestore().collection("jobs").document()
-        let jobData: [String: Any] = [
-            "userId": uid,
-            "storagePath": storagePath,
-            "status": "queued",
-            "progress": 0,
-            "createdAt": FieldValue.serverTimestamp(),
-            "updatedAt": FieldValue.serverTimestamp()
-        ]
-        
-        do {
-            try await jobRef.setData(jobData)
-            return jobRef.documentID
-        } catch {
-            throw VideoAnalysisError.jobCreationFailed(error)
-        }
-    }
-    
-    private func waitForCompletion(jobId: String) async throws -> (parentSummary: String, coachSummary: String) {
-        currentStatus = "Waiting for analysis..."
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            jobListener = Firestore.firestore().collection("jobs").document(jobId)
-                .addSnapshotListener { [weak self] snapshot, error in
-                    guard let self = self else { return }
-                    
-                    if let error = error {
-                        continuation.resume(throwing: VideoAnalysisError.networkError)
-                        return
-                    }
-                    
-                    guard let data = snapshot?.data() else { return }
-                    
-                    DispatchQueue.main.async {
-                        let status = data["status"] as? String ?? "unknown"
-                        let progress = data["progress"] as? Int ?? 0
-                        
-                        self.currentStatus = status.capitalized
-                        self.analysisProgress = progress
-                        
-                        switch status {
-                        case "completed":
-                            let parent = data["parent_summary"] as? String ?? ""
-                            let coach = data["coach_summary"] as? String ?? ""
-                            self.parentSummary = parent
-                            self.coachSummary = coach
-                            self.jobListener?.remove()
-                            continuation.resume(returning: (parentSummary: parent, coachSummary: coach))
-                            
-                        case "failed":
-                            let errorMsg = data["error"] as? String ?? "Unknown error"
-                            self.jobListener?.remove()
-                            continuation.resume(throwing: VideoAnalysisError.processingFailed(errorMsg))
-                            
-                        default:
-                            // Still processing - continue listening
-                            break
-                        }
-                    }
-                }
-        }
-    }
-}
-```
-
-### Signed URL Service Implementation (Option B: Recommended)
-```swift
-import Foundation
-import Firebase
-import FirebaseAuth
-import FirebaseFirestore
-
-@MainActor
-class SignedURLVideoAnalysisService: ObservableObject {
-    @Published var isUploading = false
-    @Published var uploadProgress: Double = 0
-    @Published var analysisProgress = 0
-    @Published var currentStatus = ""
-    @Published var parentSummary: String?
-    @Published var coachSummary: String?
-    @Published var error: VideoAnalysisError?
-    
-    private var jobListener: ListenerRegistration?
-    private let backendBaseURL = "https://your-backend.com/api"  // Update with your backend URL
-    
-    // MARK: - Public Interface
-    
-    func submitVideoWithSignedURL(_ videoURL: URL) async throws -> (parentSummary: String, coachSummary: String) {
-        reset()
-        
+    func analyzeVideo(_ videoURL: URL) async {
         guard let user = Auth.auth().currentUser else {
-            throw VideoAnalysisError.notAuthenticated
+            error = "User not authenticated"
+            return
         }
         
-        // Validate video
-        try validateVideo(videoURL)
-        
-        // Request upload URL from backend
-        let uploadInfo = try await requestUploadURL(filename: videoURL.lastPathComponent, userId: user.uid)
-        
-        // Upload video using signed URL
-        try await uploadVideoWithSignedURL(videoURL, to: uploadInfo.uploadURL)
-        
-        // Create job and listen for completion
-        let jobId = try await createJobForSignedURL(storagePath: uploadInfo.storagePath, userId: user.uid)
-        
-        // Wait for completion
-        return try await waitForCompletionWithSignedURLs(jobId: jobId)
-    }
-    
-    func fetchLatestResultsWithSignedURLs() async -> (parentSummary: String?, coachSummary: String?)? {
-        guard let uid = Auth.auth().currentUser?.uid else { return nil }
-        
-        // Get results from backend API with signed URLs
-        guard let url = URL(string: "\(backendBaseURL)/results/\(uid)") else { return nil }
+        isProcessing = true
+        error = nil
         
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let response = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let results = response?["results"] as? [[String: Any]]
+            // Step 1: Get upload URL
+            let uploadInfo = try await getUploadURL(userId: user.uid)
             
-            if let latestResult = results?.first,
-               let downloadURLs = latestResult["download_urls"] as? [String: String],
-               let parentURL = downloadURLs["parent_summary"],
-               let coachURL = downloadURLs["coach_summary"] {
-                
-                // Download results from signed URLs
-                let parentSummary = try await downloadTextFromSignedURL(parentURL)
-                let coachSummary = try await downloadTextFromSignedURL(coachURL)
-                
-                return (parentSummary, coachSummary)
-            }
+            // Step 2: Upload video
+            progress = 0.3
+            try await uploadVideo(videoURL, to: uploadInfo.uploadURL)
+            
+            // Step 3: Analyze video (waits for completion)
+            progress = 0.6
+            let results = try await analyzeVideo(userId: user.uid, storagePath: uploadInfo.storagePath)
+            
+            progress = 1.0
+            dataAnalysis = results.dataAnalysis
+            coachSummary = results.coachSummary
+            
         } catch {
-            print("Error fetching results: \(error)")
+            self.error = error.localizedDescription
         }
         
-        return nil
+        isProcessing = false
     }
     
-    // MARK: - Private Implementation
+    // MARK: - Private API calls
     
     private struct UploadInfo {
         let uploadURL: String
         let storagePath: String
     }
     
-    private func reset() {
-        isUploading = false
-        uploadProgress = 0
-        analysisProgress = 0
-        currentStatus = ""
-        parentSummary = nil
-        coachSummary = nil
-        error = nil
-        jobListener?.remove()
+    private struct AnalysisResult {
+        let dataAnalysis: String
+        let coachSummary: String
     }
     
-    private func validateVideo(_ url: URL) throws {
-        let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        if fileSize > 100_000_000 { // 100MB limit
-            throw VideoAnalysisError.invalidVideo
-        }
-    }
-    
-    private func requestUploadURL(filename: String, userId: String) async throws -> UploadInfo {
-        guard let url = URL(string: "\(backendBaseURL)/upload-url") else {
-            throw VideoAnalysisError.networkError
-        }
-        
+    private func getUploadURL(userId: String) async throws -> UploadInfo {
+        let url = URL(string: "\(apiBase)/api/upload-url")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = ["user_id": userId, "filename": filename]
+        let body = ["user_id": userId, "content_type": "video/mov"]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let uploadInfo = response["upload_info"] as! [String: Any]
+        
+        return UploadInfo(
+            uploadURL: uploadInfo["upload_url"] as! String,
+            storagePath: uploadInfo["storage_path"] as! String
+        )
+    }
+    
+    private func uploadVideo(_ videoURL: URL, to uploadURL: String) async throws {
+        let url = URL(string: uploadURL)!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("video/mov", forHTTPHeaderField: "Content-Type")
+        
+        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: videoURL)
         
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
-            throw VideoAnalysisError.networkError
+            throw URLError(.badServerResponse)
         }
-        
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let uploadURL = json?["upload_url"] as? String,
-              let storagePath = json?["storage_path"] as? String else {
-            throw VideoAnalysisError.networkError
-        }
-        
-        return UploadInfo(uploadURL: uploadURL, storagePath: storagePath)
     }
     
-    private func uploadVideoWithSignedURL(_ videoURL: URL, to uploadURL: String) async throws {
-        guard let url = URL(string: uploadURL) else {
-            throw VideoAnalysisError.networkError
-        }
-        
-        isUploading = true
-        currentStatus = "Uploading video..."
-        
+    private func analyzeVideo(userId: String, storagePath: String) async throws -> AnalysisResult {
+        let url = URL(string: "\(apiBase)/api/analyze-video")!
         var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("video/quicktime", forHTTPHeaderField: "Content-Type")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 600 // 10 minutes
         
-        return try await withCheckedThrowingContinuation { continuation in
-            let uploadTask = URLSession.shared.uploadTask(with: request, fromFile: videoURL) { [weak self] data, response, error in
-                DispatchQueue.main.async {
-                    self?.isUploading = false
-                }
-                
-                if let error = error {
-                    continuation.resume(throwing: VideoAnalysisError.uploadFailed(error))
-                } else if let httpResponse = response as? HTTPURLResponse,
-                          httpResponse.statusCode == 200 {
-                    continuation.resume()
-                } else {
-                    continuation.resume(throwing: VideoAnalysisError.uploadFailed(NSError(domain: "Upload", code: 0)))
-                }
-            }
-            
-            // Mock upload progress (real implementation would track actual progress)
-            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
-                DispatchQueue.main.async { [weak self] in
-                    self?.uploadProgress = min((self?.uploadProgress ?? 0) + 0.05, 0.95)
-                }
-                if self?.uploadProgress ?? 0 >= 0.95 {
-                    timer.invalidate()
-                }
-            }
-            
-            uploadTask.resume()
-        }
-    }
-    
-    private func createJobForSignedURL(storagePath: String, userId: String) async throws -> String {
-        currentStatus = "Creating analysis job..."
+        let body = ["user_id": userId, "storage_path": storagePath]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let jobRef = Firestore.firestore().collection("jobs").document()
-        let jobData: [String: Any] = [
-            "userId": userId,
-            "storagePath": storagePath,
-            "status": "queued",
-            "progress": 0,
-            "delivery_method": "signed_urls",
-            "createdAt": FieldValue.serverTimestamp(),
-            "updatedAt": FieldValue.serverTimestamp()
-        ]
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         
-        try await jobRef.setData(jobData)
-        return jobRef.documentID
-    }
-    
-    private func waitForCompletionWithSignedURLs(jobId: String) async throws -> (parentSummary: String, coachSummary: String) {
-        currentStatus = "Waiting for analysis..."
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            jobListener = Firestore.firestore().collection("jobs").document(jobId)
-                .addSnapshotListener { [weak self] snapshot, error in
-                    guard let self = self else { return }
-                    
-                    if let error = error {
-                        continuation.resume(throwing: VideoAnalysisError.networkError)
-                        return
-                    }
-                    
-                    guard let data = snapshot?.data() else { return }
-                    
-                    DispatchQueue.main.async {
-                        let status = data["status"] as? String ?? "unknown"
-                        let progress = data["progress"] as? Int ?? 0
-                        
-                        self.currentStatus = status.capitalized
-                        self.analysisProgress = progress
-                        
-                        switch status {
-                        case "completed":
-                            if let resultURLs = data["result_urls"] as? [String: String],
-                               let parentURL = resultURLs["parent_summary_url"],
-                               let coachURL = resultURLs["coach_summary_url"] {
-                                
-                                // Download results from signed URLs
-                                Task {
-                                    do {
-                                        let parentSummary = try await self.downloadTextFromSignedURL(parentURL)
-                                        let coachSummary = try await self.downloadTextFromSignedURL(coachURL)
-                                        
-                                        await MainActor.run {
-                                            self.parentSummary = parentSummary
-                                            self.coachSummary = coachSummary
-                                            self.jobListener?.remove()
-                                        }
-                                        
-                                        continuation.resume(returning: (parentSummary: parentSummary, coachSummary: coachSummary))
-                                    } catch {
-                                        continuation.resume(throwing: VideoAnalysisError.networkError)
-                                    }
-                                }
-                            }
-                            
-                        case "failed":
-                            let errorMsg = data["error"] as? String ?? "Unknown error"
-                            self.jobListener?.remove()
-                            continuation.resume(throwing: VideoAnalysisError.processingFailed(errorMsg))
-                            
-                        default:
-                            // Still processing - continue listening
-                            break
-                        }
-                    }
-                }
-        }
-    }
-    
-    private func downloadTextFromSignedURL(_ urlString: String) async throws -> String {
-        guard let url = URL(string: urlString) else {
-            throw VideoAnalysisError.networkError
+        guard response["success"] as? Bool == true,
+              let analysis = response["analysis"] as? [String: Any],
+              let dataAnalysis = analysis["data_analysis"] as? String,
+              let coachSummary = analysis["coach_summary"] as? String else {
+            let errorMsg = response["error"] as? String ?? "Analysis failed"
+            throw NSError(domain: "Analysis", code: 0, userInfo: [NSLocalizedDescriptionKey: errorMsg])
         }
         
-        let (data, _) = try await URLSession.shared.data(from: url)
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw VideoAnalysisError.networkError
-        }
-        
-        return text
+        return AnalysisResult(dataAnalysis: dataAnalysis, coachSummary: coachSummary)
     }
 }
 ```
 
-### SwiftUI Integration Example
+### SwiftUI View
 ```swift
 import SwiftUI
+import PhotosUI
 
 struct VideoAnalysisView: View {
     @StateObject private var analysisService = VideoAnalysisService()
-    @State private var selectedVideoURL: URL?
-    @State private var showingVideoPicker = false
+    @State private var selectedItem: PhotosPickerItem?
     @State private var showingResults = false
     
     var body: some View {
         VStack(spacing: 20) {
-            // Upload Section
-            if !analysisService.isUploading && analysisService.currentStatus.isEmpty {
-                Button("Select Video to Analyze") {
-                    showingVideoPicker = true
-                }
-                .buttonStyle(.borderedProminent)
+            // Video picker
+            PhotosPicker(
+                selection: $selectedItem,
+                matching: .videos,
+                photoLibrary: .shared()
+            ) {
+                Label("Select Hockey Video", systemImage: "video.circle")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.blue)
+                    .cornerRadius(12)
             }
+            .disabled(analysisService.isProcessing)
             
-            // Progress Section
-            if analysisService.isUploading {
+            // Progress
+            if analysisService.isProcessing {
                 VStack {
-                    Text("Uploading Video...")
-                    ProgressView(value: analysisService.uploadProgress)
-                        .progressViewStyle(LinearProgressViewStyle())
-                }
-            }
-            
-            if !analysisService.currentStatus.isEmpty && !analysisService.isUploading {
-                VStack {
-                    Text(analysisService.currentStatus)
-                    ProgressView(value: Double(analysisService.analysisProgress) / 100.0)
-                        .progressViewStyle(LinearProgressViewStyle())
-                    Text("\(analysisService.analysisProgress)%")
-                        .font(.caption)
-                }
-            }
-            
-            // Results Section
-            if let parentSummary = analysisService.parentSummary,
-               let coachSummary = analysisService.coachSummary {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Analysis Complete!")
+                    Text("Analyzing your hockey video...")
                         .font(.headline)
-                        .foregroundColor(.green)
                     
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Performance Summary")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                        Text(parentSummary)
+                    ProgressView(value: analysisService.progress)
+                        .progressViewStyle(LinearProgressViewStyle())
+                        .frame(height: 8)
+                    
+                    Text("\(Int(analysisService.progress * 100))%")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+            }
+            
+            // Results
+            if let dataAnalysis = analysisService.dataAnalysis,
+               let coachSummary = analysisService.coachSummary {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("🎯 Performance Summary")
+                            .font(.headline)
+                        Text(dataAnalysis)
                             .padding()
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(8)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Coaching Feedback")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
+                        
+                        Text("🏒 Coaching Feedback")
+                            .font(.headline)
                         Text(coachSummary)
                             .padding()
                             .background(Color.blue.opacity(0.1))
                             .cornerRadius(8)
+                        
+                        Button("Analyze Another Video") {
+                            reset()
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    
-                    Button("Analyze Another Video") {
-                        analysisService.cancelCurrentJob()
-                        showingVideoPicker = true
-                    }
-                    .buttonStyle(.bordered)
                 }
             }
             
-            // Error Section
+            // Error
             if let error = analysisService.error {
-                VStack {
-                    Text("Error")
-                        .font(.headline)
-                        .foregroundColor(.red)
-                    Text(error.localizedDescription)
-                        .foregroundColor(.red)
-                    Button("Try Again") {
-                        if let url = selectedVideoURL {
-                            analyzeVideo(url)
-                        } else {
-                            showingVideoPicker = true
-                        }
-                    }
-                    .buttonStyle(.bordered)
+                Text("Error: \(error)")
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+                
+                Button("Try Again") {
+                    reset()
                 }
+                .buttonStyle(.bordered)
             }
             
             Spacer()
         }
         .padding()
-        .sheet(isPresented: $showingVideoPicker) {
-            VideoPickerView { url in
-                selectedVideoURL = url
-                analyzeVideo(url)
-            }
-        }
-        .onAppear {
-            checkForPreviousResults()
-        }
-    }
-    
-    private func analyzeVideo(_ url: URL) {
-        Task {
-            do {
-                let results = try await analysisService.submitVideo(url)
-                // Results automatically appear via @Published properties
-            } catch {
-                analysisService.error = error as? VideoAnalysisError ?? .networkError
+        .onChange(of: selectedItem) { newItem in
+            Task {
+                await loadAndAnalyzeVideo(newItem)
             }
         }
     }
     
-    private func checkForPreviousResults() {
-        Task {
-            if let result = await analysisService.fetchLatestResult(),
-               let parent = result.parentSummary,
-               let coach = result.coachSummary {
-                await MainActor.run {
-                    analysisService.parentSummary = parent
-                    analysisService.coachSummary = coach
-                }
+    private func loadAndAnalyzeVideo(_ item: PhotosPickerItem?) async {
+        guard let item = item else { return }
+        
+        do {
+            guard let videoURL = try await item.loadTransferable(type: VideoFile.self)?.url else {
+                analysisService.error = "Failed to load video"
+                return
             }
+            
+            await analysisService.analyzeVideo(videoURL)
+        } catch {
+            analysisService.error = error.localizedDescription
         }
+    }
+    
+    private func reset() {
+        analysisService.dataAnalysis = nil
+        analysisService.coachSummary = nil
+        analysisService.error = nil
+        selectedItem = nil
     }
 }
 
-// Simple video picker placeholder - implement based on your needs
-struct VideoPickerView: UIViewControllerRepresentable {
-    let onVideoSelected: (URL) -> Void
+// Helper for video file transfer
+struct VideoFile: Transferable {
+    let url: URL
     
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.mediaTypes = ["public.movie"]
-        picker.delegate = context.coordinator
-        return picker
-    }
-    
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onVideoSelected: onVideoSelected)
-    }
-    
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let onVideoSelected: (URL) -> Void
-        
-        init(onVideoSelected: @escaping (URL) -> Void) {
-            self.onVideoSelected = onVideoSelected
-        }
-        
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            if let url = info[.mediaURL] as? URL {
-                onVideoSelected(url)
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { video in
+            SentTransferredFile(video.url)
+        } importing: { received in
+            let copy = URL.documentsDirectory.appending(path: "imported_video.mov")
+            if FileManager.default.fileExists(atPath: copy.path()) {
+                try FileManager.default.removeItem(at: copy)
             }
-            picker.dismiss(animated: true)
+            try FileManager.default.copyItem(at: received.file, to: copy)
+            return VideoFile(url: copy)
         }
     }
 }
 ```
 
-### Push Notifications Setup
+## Error Handling
+
+Common errors and solutions:
+
 ```swift
-import FirebaseMessaging
-
-final class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
-    func application(_ application: UIApplication,
-                   didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        FirebaseApp.configure()
-        Messaging.messaging().delegate = self
-        
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
-            if granted {
-                DispatchQueue.main.async {
-                    application.registerForRemoteNotifications()
-                }
-            }
-        }
-        
-        return true
-    }
-    
-    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-        guard let token = fcmToken, let uid = Auth.auth().currentUser?.uid else { return }
-        
-        // Store device token for push notifications
-        Firestore.firestore().collection("users").document(uid).collection("devices").document(token)
-            .setData([
-                "createdAt": FieldValue.serverTimestamp(),
-                "platform": "ios"
-            ], merge: true)
-    }
-    
-    // Handle notification tap
-    func userNotificationCenter(_ center: UNUserNotificationCenter, 
-                              didReceive response: UNNotificationResponse,
-                              withCompletionHandler completionHandler: @escaping () -> Void) {
-        let userInfo = response.notification.request.content.userInfo
-        
-        if let jobId = userInfo["jobId"] as? String {
-            // Navigate to results screen with this jobId
-            NotificationCenter.default.post(name: .showAnalysisResults, object: jobId)
-        }
-        
-        completionHandler()
-    }
-}
-
-extension Notification.Name {
-    static let showAnalysisResults = Notification.Name("showAnalysisResults")
+// Handle specific API errors
+switch errorMessage {
+case "Video analysis system is temporarily unavailable":
+    // System maintenance - try again later
+    break
+case "user_id and storage_path are required":
+    // Authentication issue
+    break
+case "Failed to analyze video":
+    // Video processing error - check format/size
+    break
+default:
+    // Generic error handling
+    break
 }
 ```
 
-### Testing & Troubleshooting
+## Requirements
 
-1. **Test with small video first** (< 10MB, < 30 seconds)
-2. **Check Firebase Console:**
-   - Storage: verify video uploaded to `users/{uid}/...`
-   - Firestore: verify job document created in `jobs` collection
-   - Functions: check logs for any errors
+- **Video format**: .mov, .mp4 recommended
+- **Video size**: Under 100MB for best performance  
+- **Content**: Hockey shooting drills work best
+- **Processing time**: 2-10 minutes depending on video length
+- **Authentication**: Firebase Auth required
 
-3. **Common issues:**
-   - **Upload fails:** Check Firebase Auth, Storage rules, network connection
-   - **Job never starts:** Verify Functions deployed, Pub/Sub topic exists
-   - **Processing fails:** Check Cloud Run logs for worker errors
-   - **No push notifications:** Verify FCM setup, device token registration
+## Response Format
 
-4. **Debug logging:**
-```swift
-// Add to your service for debugging
-private func log(_ message: String) {
-    print("[VideoAnalysis] \(message)")
-}
-```
+Your app will receive:
 
-### Data Model Reference
-Firestore `jobs/{jobId}` document structure:
 ```json
 {
-  "userId": "firebase_auth_uid",
-  "storagePath": "users/{uid}/{uuid}.mov",
-  "status": "queued|processing|summarizing|completed|failed",
-  "progress": 0-100,
-  "parent_summary": "Performance summary text...",
-  "coach_summary": "What went well:\n- ...\n\nWhat to work on:\n- ...",
-  "error": "Error message if failed",
-  "createdAt": "2024-01-01T12:00:00Z",
-  "updatedAt": "2024-01-01T12:05:30Z"
+  "success": true,
+  "analysis": {
+    "data_analysis": "Shots detected at timestamp: 8.2s, 15.7s...",
+    "coach_summary": "## What Went Well\n\n- Good knee bend...",
+    "shots_detected": 3,
+    "video_duration": 45.2,
+    "pose_analysis": true
+  }
 }
 ```
 
-### Quick Start Checklist
-- [ ] Add Firebase to iOS project (GoogleService-Info.plist)
-- [ ] Install Firebase SDK packages
-- [ ] Configure Firebase in app startup
-- [ ] Copy `VideoAnalysisError` enum
+## Quick Start Checklist
+
+- [ ] Add Firebase to iOS project
+- [ ] Install Firebase SDK packages  
 - [ ] Copy `VideoAnalysisService` class
 - [ ] Copy `VideoAnalysisView` SwiftUI example
-- [ ] Set up push notifications (optional)
-- [ ] Test with a small video file
+- [ ] Test with a hockey video file
 
-That's it! Your app will upload videos, track progress in real-time, and receive both parent-friendly summaries and detailed coaching feedback.
-
-
+That's it! Your app will upload videos and receive detailed hockey analysis feedback. 🏒

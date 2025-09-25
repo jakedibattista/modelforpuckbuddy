@@ -13,6 +13,8 @@ This document describes the end-to-end design to let the iOS app send videos for
 ## Production Architecture ✅ DEPLOYED
 
 **Backend API**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+**Cloud Functions**: ✅ **ACTIVE** - `enqueueJob`, `notifyOnCompletion`, `cleanupOldJobs`
+**Pub/Sub Topic**: ✅ **ACTIVE** - `process-video`
 
 ### Simple Workflow (Recommended)
 1. **App requests upload URL**: `POST /api/upload-url`

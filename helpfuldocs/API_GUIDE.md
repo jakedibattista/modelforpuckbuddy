@@ -174,7 +174,7 @@ async function analyzeHockeyVideo(videoFile, userId) {
     
     if (result.success) {
       return {
-        parentFeedback: result.analysis.parent_summary,
+        parentFeedback: result.analysis.data_analysis,
         coachFeedback: result.analysis.coach_summary
       };
     } else {
@@ -248,7 +248,7 @@ async function analyzeWithProgress(videoFile, userId, onProgress) {
 ## ⚠️ Important Notes
 
 ### Processing Time
-- **Simple**: API waits up to 5 minutes, then returns results or timeout error
+- **Simple**: API waits up to 10 minutes, then returns results or timeout error
 - **Advanced**: Usually 2-5 minutes, poll every 5-10 seconds for updates
 
 ### File Requirements  
