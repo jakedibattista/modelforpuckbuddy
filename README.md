@@ -2,7 +2,7 @@
 
 Runtime: MediaPipe Pose + OpenCV + FFmpeg.
 Enhanced form analysis: head position, upper body square, lower body triangle.
-Agents: parent per-shot report, improvement coach sections (Gemini).
+Agents: data analysis, coaching feedback, and conversational AI coach (Gemini + Google Search).
 
 ## Project layout
 ```text
@@ -10,10 +10,11 @@ modelforpuckbuddy/
   analysis/                # Pose analysis
     __init__.py
     shooting_drill_feedback.py  # analyze_drill(video_path) → dict
-  agents/                  # Text-generation agents
+  agents/                  # AI agents for analysis and coaching
     __init__.py
-    data_summary_agent.py           # per-shot data analysis report
-            seth_shooting_agent.py          # 2-section coach summary
+    data_summary_agent.py    # structured per-shot data analysis
+    seth_shooting_agent.py   # 2-section coaching feedback
+    openice_agent.py         # conversational AI coach with Google Search
   worker/                  # Cloud Run worker services
     app.py                 # Original worker for Pub/Sub processing
     app_signed_urls.py     # Signed URL worker for secure processing
@@ -60,8 +61,12 @@ export GOOGLE_API_KEY=YOUR_KEY
 
 3) Run agents against an existing analysis JSON:
 ```bash
-python -m agents.seth_shooting_agent results/drill/kidshoot4_drill_feedback.json
+# Core analysis agents
 python -m agents.data_summary_agent results/drill/kidshoot4_drill_feedback.json
+python -m agents.seth_shooting_agent results/drill/kidshoot4_drill_feedback.json
+
+# OpenIce conversational coach
+python -m agents.openice_agent --analysis-file results/drill/kidshoot4_drill_feedback.json --question "How can I shoot like Connor McDavid?"
 ```
 
 To generate an analysis JSON from a local video, install analysis dependencies (see `worker/requirements.txt` for reference: mediapipe, opencv-python-headless, numpy, etc.) and run:
@@ -75,11 +80,18 @@ The backend API is deployed to Cloud Run and ready for production use:
 **Backend API URL**: `https://puck-buddy-model-22317830094.us-central1.run.app`
 
 ### Available Endpoints:
+
+**Core Video Analysis:**
 - `GET /health` - Service health check
 - `POST /api/upload-url` - Generate signed URL for video upload
 - `POST /api/analyze-video` - ⭐ **Simple**: Upload video and get analysis results with MediaPipe pose detection
 - `POST /api/submit-video` - Create analysis job (advanced workflow)
 - `GET /api/results/{user_id}` - List user's analysis results (advanced workflow)
+
+**OpenIce AI Coach (Optional):**
+- `POST /api/start-chat` - Create conversational coaching session with analysis data
+- `POST /api/ask-question` - Ask questions about technique, get personalized advice
+- `GET /api/chat-info/<session_id>` - Get chat session information
 
 ### Testing the deployment:
 ```bash
@@ -107,6 +119,19 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyz
   -d '{"user_id":"test123","storage_path":"users/test123/..."}'
 ```
 
+### OpenIce AI Coach Integration (Optional):
+```bash
+# After getting analysis results, start conversational coaching
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/start-chat \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","analysis_data":"**Shots detected at timestamps:** 00:08, 00:15..."}'
+
+# Ask coaching questions  
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/ask-question \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"your-session-id","question":"How can I shoot like Connor McDavid?"}'
+```
+
 ### Advanced Integration:
 ```bash
 # Test complete signed URL workflow  
@@ -114,11 +139,12 @@ cd tests
 python3 test_complete_signed_url_workflow.py "test_user_123" "../videos/input/kidshoot2.MOV"
 ```
 
-**📖 Documentation**: See `helpfuldocs/API_GUIDE.md` for complete integration examples.
+**📖 Documentation**: See `helpfuldocs/API_GUIDE.md` for complete integration examples including OpenIce.
 
 ## Cloud components
-- **Backend API** (`signed_url_api.py`) deployed to Cloud Run provides signed URL endpoints
+- **Backend API** (`signed_url_api.py`) deployed to Cloud Run provides signed URL endpoints + OpenIce chat endpoints
 - **Worker services** (`worker/app_signed_urls.py`) handle video processing with signed URLs
+- **AI Agents**: data analysis, coaching feedback, and OpenIce conversational coach (Gemini + Google Search)
 - Firebase Functions (2nd gen) in `functions/` can enqueue jobs and clean old data
 - Cloud Run handles video analysis via `analysis.analyze_drill` and agent summaries
 
