@@ -190,7 +190,7 @@ def generate_summary_with_gemini(
     raw: Dict[str, Any],
     model_name: str = "gemini-2.5-flash-lite",
     temperature: float = 0.1,
-    max_output_tokens: int = 256,
+    max_output_tokens: int = 512,
 ) -> str:
     """Generate data-focused summary using Gemini with strict instructions.
 
@@ -272,7 +272,7 @@ def main() -> None:
     parser.add_argument("json_path", help="Path to drill feedback JSON file")
     parser.add_argument("--model", default="gemini-2.5-flash-lite", help="Gemini model name")
     parser.add_argument("--temperature", type=float, default=0.1)
-    parser.add_argument("--max_tokens", type=int, default=256)
+    parser.add_argument("--max_tokens", type=int, default=512)
     parser.add_argument("--local", action="store_true", help="Force local formatting (skip Gemini)")
     args = parser.parse_args()
 
