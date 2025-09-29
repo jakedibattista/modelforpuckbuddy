@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from utils.firebase_storage import FirebaseStorageManager
-from analysis.shooting_drill_feedback import analyze_drill
+from analysis.pose_extraction_shooting_drills import analyze_drill
 from agents.data_summary_agent import generate_summary_with_gemini
 from agents.seth_shooting_agent import generate_sections
 

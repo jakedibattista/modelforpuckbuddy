@@ -66,9 +66,9 @@ python -m agents.openice_agent --analysis-file results/drill/kidshoot4_drill_fee
 **Shots detected at timestamps:** 00:08, 00:15, 00:23
 
 **Shot 1: 00:08:**
-**head position:** good (0.78)
-**wrist steadiness:** smooth (0.85)
-**hip drive:** 0.650 (good)
+**head position:** head excellent (100), eyes focused (78)
+**wrist performance:** excellent extension (85/100)
+**hip drive:** excellent (78/100, 65.2 speed)
 **front knee angle:** 95°
 **back leg angle:** 165°
 ```

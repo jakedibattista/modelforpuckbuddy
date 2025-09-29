@@ -31,7 +31,7 @@ from google.cloud import firestore  # type: ignore
 from google.cloud import storage  # type: ignore
 
 # Import local analysis modules from repository
-from analysis.shooting_drill_feedback import analyze_drill  # type: ignore
+from analysis.pose_extraction_shooting_drills import analyze_drill  # type: ignore
 from agents.data_summary_agent import generate_summary_with_gemini  # type: ignore
 from agents.seth_shooting_agent import generate_sections  # type: ignore
 

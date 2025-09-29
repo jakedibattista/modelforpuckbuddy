@@ -57,7 +57,7 @@ POST /api/analyze-video
 {
   "success": true,
   "analysis": {
-    "data_analysis": "**Shots detected at timestamps:** 00:08, 00:15\n\n**Shot 1: 00:08:**\n**head position:** good (0.78)\n**wrist steadiness:** smooth (0.85)",
+    "data_analysis": "**Shots detected at timestamps:** 00:08, 00:15\n\n**Shot 1: 00:08:**\n**head position:** head excellent (100), eyes focused (68)\n**wrist performance:** excellent extension (82/100)\n**hip drive:** excellent (78/100, 75.3 speed)",
     "shots_detected": 3,
     "video_duration": 25.4,
     "raw_analysis": "full analysis data for coaching"

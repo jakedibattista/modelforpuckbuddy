@@ -243,7 +243,12 @@ def _determine_front_back_legs(shooting_side: str, pose_series: Dict[str, List[O
         return 'RIGHT', 'LEFT'  # front_leg, back_leg
 
 def _calculate_head_position_metrics(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]]) -> List[Dict]:
-    """Calculate head position and eye level metrics for each frame."""
+    """Calculate head position metrics that coaches and players can understand.
+    
+    Returns metrics as human-readable categories:
+    - head_up_score: 0-100 scale, where 100 = head perfectly up, eyes on target
+    - eyes_forward_score: 0-100 scale, where 100 = eyes facing straight forward 
+    """
     nose = pose_series.get('NOSE', [])
     left_eye = pose_series.get('LEFT_EYE', [])
     right_eye = pose_series.get('RIGHT_EYE', [])
@@ -254,9 +259,8 @@ def _calculate_head_position_metrics(pose_series: Dict[str, List[Optional[Tuple[
     
     for i in range(len(nose)):
         metrics = {
-            'forward_lean': None,
-            'eye_level': None,
-            'head_direction': None
+            'head_up_score': None,        # 0-100: How well head is up (not looking down)
+            'eyes_forward_score': None,   # 0-100: How well eyes face target direction
         }
         
         n = nose[i] if i < len(nose) else None
@@ -265,30 +269,54 @@ def _calculate_head_position_metrics(pose_series: Dict[str, List[Optional[Tuple[
         ls = left_shoulder[i] if i < len(left_shoulder) else None
         rs = right_shoulder[i] if i < len(right_shoulder) else None
         
-        if n and ls and rs and n[2] > 0.5 and ls[2] > 0.5 and rs[2] > 0.5:
-            # Forward lean: nose position relative to shoulder line
-            shoulder_center_x = (ls[0] + rs[0]) * 0.5
-            forward_lean = (n[0] - shoulder_center_x) / abs(ls[0] - rs[0] + 1e-6)
-            metrics['forward_lean'] = float(np.clip(abs(forward_lean), 0.0, 1.0))
-        
-        if le and re and le[2] > 0.5 and re[2] > 0.5:
-            # Eye level consistency (both eyes at same height)
-            eye_level_diff = abs(le[1] - re[1]) / (abs(le[1] + re[1]) * 0.5 + 1e-6)
-            metrics['eye_level'] = float(np.clip(1.0 - eye_level_diff, 0.0, 1.0))
+        # Only calculate if we have good visibility on key landmarks
+        if (n and ls and rs and n[2] > 0.7 and ls[2] > 0.7 and rs[2] > 0.7 and
+            le and re and le[2] > 0.7 and re[2] > 0.7):
             
-            # Head direction (eyes pointing toward target)
-            eye_center_x = (le[0] + re[0]) * 0.5
-            if ls and rs and ls[2] > 0.5 and rs[2] > 0.5:
-                shoulder_center_x = (ls[0] + rs[0]) * 0.5
-                head_direction = (eye_center_x - shoulder_center_x) / abs(ls[0] - rs[0] + 1e-6)
-                metrics['head_direction'] = float(np.clip(abs(head_direction), 0.0, 1.0))
+            # HEAD UP SCORE: Measure if head is up (nose above shoulders)
+            # Good hockey form = head up, looking at target, not down at puck
+            shoulder_center_y = (ls[1] + rs[1]) * 0.5
+            head_height_ratio = (shoulder_center_y - n[1]) / abs(ls[1] - rs[1] + 1e-6)
+            # Convert to 0-100 scale: head well above shoulders = 100
+            head_up_raw = float(np.clip(head_height_ratio * 2.0, 0.0, 1.0))
+            metrics['head_up_score'] = round(head_up_raw * 100.0, 1)
+            
+            # EYES FORWARD SCORE: Both eyes level and facing same direction  
+            # Good hockey form = eyes level, both looking forward at target
+            eye_level_diff = abs(le[1] - re[1]) / abs(ls[1] - rs[1] + 1e-6)
+            eyes_level_score = float(np.clip(1.0 - eye_level_diff * 3.0, 0.0, 1.0))
+            
+            # Eyes pointing same direction (not cross-eyed or looking sideways)
+            eye_separation = abs(le[0] - re[0])
+            shoulder_width = abs(ls[0] - rs[0])
+            eye_alignment = eye_separation / (shoulder_width + 1e-6)
+            eye_direction_score = float(np.clip(eye_alignment, 0.0, 1.0))
+            
+            # Combine for overall forward focus
+            eyes_forward_raw = (eyes_level_score + eye_direction_score) * 0.5
+            metrics['eyes_forward_score'] = round(eyes_forward_raw * 100.0, 1)
         
         head_metrics.append(metrics)
     
     return head_metrics
 
-def _calculate_upper_body_square_metrics(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]]) -> List[Dict]:
-    """Calculate upper body 'square' formation metrics for each frame."""
+def _calculate_wrist_extension_metrics(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]]) -> List[Dict]:
+    """Calculate wrist extension metrics for shooting technique.
+    
+    IMPORTANT: This measures the FOLLOW-THROUGH phase (arms extending toward target).
+    This is DIFFERENT from wrist control setup measurement which tracks the SETUP phase.
+    
+    TIMING:
+    - Setup Control: Measured during the "loading" phase (arms pulling back before shot)
+    - Wrist Extension: Measured during the "follow-through" phase (arms extending after release)
+    
+    The shot detection algorithm automatically identifies these time windows:
+    1. SETUP WINDOW: When wrist is moving backward (loading the shot)
+    2. SHOT WINDOW: The moment of release (peak wrist speed)  
+    3. FOLLOW-THROUGH: After shot release (this function measures this phase)
+    
+    Returns 0-100 scores that coaches and players can understand.
+    """
     left_shoulder = pose_series.get('LEFT_SHOULDER', [])
     right_shoulder = pose_series.get('RIGHT_SHOULDER', [])
     left_elbow = pose_series.get('LEFT_ELBOW', [])
@@ -296,13 +324,14 @@ def _calculate_upper_body_square_metrics(pose_series: Dict[str, List[Optional[Tu
     left_wrist = pose_series.get('LEFT_WRIST', [])
     right_wrist = pose_series.get('RIGHT_WRIST', [])
     
-    upper_body_metrics = []
+    wrist_metrics = []
     
     for i in range(max(len(left_shoulder), len(right_shoulder))):
         metrics = {
-            'shoulder_level': None,
-            'arm_extension': None,
-            'target_alignment': None
+            'left_wrist_extension_score': None,   # 0-100: How well left wrist extends toward target
+            'right_wrist_extension_score': None,  # 0-100: How well right wrist extends toward target
+            'both_wrists_aligned_score': None,    # 0-100: How well both wrists point same direction
+            'follow_through_score': None          # 0-100: Overall follow-through quality
         }
         
         ls = left_shoulder[i] if i < len(left_shoulder) else None
@@ -312,43 +341,57 @@ def _calculate_upper_body_square_metrics(pose_series: Dict[str, List[Optional[Tu
         lw = left_wrist[i] if i < len(left_wrist) else None
         rw = right_wrist[i] if i < len(right_wrist) else None
         
-        # Shoulder level (both shoulders at same height)
-        if ls and rs and ls[2] > 0.5 and rs[2] > 0.5:
-            shoulder_diff = abs(ls[1] - rs[1]) / (abs(ls[1] + rs[1]) * 0.5 + 1e-6)
-            metrics['shoulder_level'] = float(np.clip(1.0 - shoulder_diff, 0.0, 1.0))
+        # Only calculate if we have good visibility on both arms
+        valid_left = ls and le and lw and min(ls[2], le[2], lw[2]) > 0.7
+        valid_right = rs and re and rw and min(rs[2], re[2], rw[2]) > 0.7
         
-        # Arm extension (elbows extended)
-        arm_extensions = []
-        for shoulder, elbow, wrist in [(ls, le, lw), (rs, re, rw)]:
-            if shoulder and elbow and wrist and min(shoulder[2], elbow[2], wrist[2]) > 0.5:
-                # Calculate arm extension angle
-                arm_angle = _angle_deg((shoulder[0], shoulder[1]), (elbow[0], elbow[1]), (wrist[0], wrist[1]))
-                # Good extension is close to 180 degrees
-                extension_score = 1.0 - abs(180.0 - arm_angle) / 180.0
-                arm_extensions.append(max(0.0, extension_score))
+        # LEFT WRIST EXTENSION
+        if valid_left:
+            # Measure arm extension: shoulder -> elbow -> wrist angle
+            left_arm_angle = _angle_deg((ls[0], ls[1]), (le[0], le[1]), (lw[0], lw[1]))
+            # Good extension = close to 180° (straight arm)
+            left_extension_raw = 1.0 - abs(180.0 - left_arm_angle) / 180.0
+            metrics['left_wrist_extension_score'] = round(max(0.0, left_extension_raw) * 100.0, 1)
         
-        if arm_extensions:
-            metrics['arm_extension'] = float(np.mean(arm_extensions))
+        # RIGHT WRIST EXTENSION  
+        if valid_right:
+            # Measure arm extension: shoulder -> elbow -> wrist angle
+            right_arm_angle = _angle_deg((rs[0], rs[1]), (re[0], re[1]), (rw[0], rw[1]))
+            # Good extension = close to 180° (straight arm)
+            right_extension_raw = 1.0 - abs(180.0 - right_arm_angle) / 180.0
+            metrics['right_wrist_extension_score'] = round(max(0.0, right_extension_raw) * 100.0, 1)
         
-        # Target alignment (arms pointing same direction)
-        if ls and rs and lw and rw and min(ls[2], rs[2], lw[2], rw[2]) > 0.5:
-            # Calculate arm directions
-            left_arm_vector = (lw[0] - ls[0], lw[1] - ls[1])
-            right_arm_vector = (rw[0] - rs[0], rw[1] - rs[1])
+        # BOTH WRISTS ALIGNED (pointing toward target)
+        if valid_left and valid_right:
+            # Calculate direction each wrist points from shoulder
+            left_direction = (lw[0] - ls[0], lw[1] - ls[1])
+            right_direction = (rw[0] - rs[0], rw[1] - rs[1])
             
-            # Normalize vectors
-            left_norm = np.linalg.norm(left_arm_vector) + 1e-6
-            right_norm = np.linalg.norm(right_arm_vector) + 1e-6
-            left_unit = (left_arm_vector[0] / left_norm, left_arm_vector[1] / left_norm)
-            right_unit = (right_arm_vector[0] / right_norm, right_arm_vector[1] / right_norm)
+            # Normalize direction vectors
+            left_norm = np.linalg.norm(left_direction) + 1e-6
+            right_norm = np.linalg.norm(right_direction) + 1e-6
+            left_unit = (left_direction[0] / left_norm, left_direction[1] / left_norm)
+            right_unit = (right_direction[0] / right_norm, right_direction[1] / right_norm)
             
-            # Calculate alignment (dot product)
+            # Measure alignment (both wrists pointing same direction)
             alignment = np.dot(left_unit, right_unit)
-            metrics['target_alignment'] = float(np.clip((alignment + 1.0) * 0.5, 0.0, 1.0))
+            # Convert from [-1,1] to [0,100] scale
+            alignment_score = (alignment + 1.0) * 0.5
+            metrics['both_wrists_aligned_score'] = round(alignment_score * 100.0, 1)
+            
+            # OVERALL FOLLOW-THROUGH SCORE
+            # Combine extension + alignment for overall quality
+            left_ext = metrics['left_wrist_extension_score'] or 0.0
+            right_ext = metrics['right_wrist_extension_score'] or 0.0
+            align_score = metrics['both_wrists_aligned_score'] or 0.0
+            
+            # Weight: 40% each arm extension + 20% alignment
+            follow_through_raw = (left_ext * 0.4 + right_ext * 0.4 + align_score * 0.2)
+            metrics['follow_through_score'] = round(follow_through_raw, 1)
         
-        upper_body_metrics.append(metrics)
+        wrist_metrics.append(metrics)
     
-    return upper_body_metrics
+    return wrist_metrics
 
 def _calculate_lower_body_triangle_metrics(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]], 
                                           front_leg: str, back_leg: str) -> List[Dict]:
@@ -563,12 +606,12 @@ def _extract_pose_features(video_path: str, stride: int = 2) -> Tuple:
     shooting_side = _detect_shooting_side(pose_series)
     front_leg, back_leg = _determine_front_back_legs(shooting_side, pose_series)
     head_metrics = _calculate_head_position_metrics(pose_series)
-    upper_body_metrics = _calculate_upper_body_square_metrics(pose_series)
+    wrist_extension_metrics = _calculate_wrist_extension_metrics(pose_series)
     lower_body_metrics = _calculate_lower_body_triangle_metrics(pose_series, front_leg, back_leg)
     
     return (times, pose_series, fps, total_frames, duration_sec, knees, wrist_vx, 
             wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y,
-            shooting_side, front_leg, back_leg, head_metrics, upper_body_metrics, lower_body_metrics)
+            shooting_side, front_leg, back_leg, head_metrics, wrist_extension_metrics, lower_body_metrics)
 
 
 def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees: List[Optional[float]], 
@@ -576,7 +619,7 @@ def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees
                               hip_vx: np.ndarray, active_wrist_y: List[Optional[float]], 
                               active_shoulder_y: List[Optional[float]], torso_height: List[Optional[float]],
                               shooting_side: str, front_leg: str, back_leg: str,
-                              head_metrics: List[Dict], upper_body_metrics: List[Dict], 
+                              head_metrics: List[Dict], wrist_extension_metrics: List[Dict], 
                               lower_body_metrics: List[Dict]) -> List[Dict]:
     """Detect shot peaks and analyze each shot's metrics.
     
@@ -621,65 +664,156 @@ def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees
             knee_bend_score = float(np.clip((140.0 - a) / 40.0, 0.0, 1.0))
         else:
             knee_bend_score = 0.0
-        # Hip drive near shot
+        # HIP DRIVE MEASUREMENT - Clear and understandable
+        # Good hockey shooting = hips drive forward through the shot for power generation
         shot_slice = slice(shot_idx[0], min(len(times), shot_idx[1]+1))
-        # Only consider forward (positive) hip vx for drive
         hip_window = hip_vx[shot_slice] if shot_slice.stop > shot_slice.start else np.array([], dtype=np.float64)
-        hip_forward = hip_window[hip_window > 0.0]
-        hip_drive_peak = float(np.max(hip_forward)) if hip_forward.size > 0 else 0.0
-        pos_hips = hip_vx[hip_vx > 0.0]
-        hip_norm_denom = float(np.nanpercentile(pos_hips, 90)) if pos_hips.size > 0 else float(np.nanpercentile(np.abs(hip_vx), 90) + 1e-6)
-        hip_drive_norm = float(np.clip(hip_drive_peak / (hip_norm_denom + 1e-6), 0.0, 1.0))
-        hip_drive_good = bool(hip_drive_norm >= 0.3)
-        # Control smoothness with validity, min window, and direction gating
+        
+        # Measure forward hip movement during shot
+        hip_forward_movement = hip_window[hip_window > 0.0]  # Only forward movement counts
+        hip_drive_peak = float(np.max(hip_forward_movement)) if hip_forward_movement.size > 0 else 0.0
+        
+        # Calculate hip drive score on 0-100 scale with better differentiation
+        # Based on analysis of real shooting data - more nuanced thresholds
+        min_good_speed = 15.0      # pixels/frame for "good" (raised from 10)
+        solid_speed = 35.0         # pixels/frame for "solid" 
+        excellent_speed = 60.0     # pixels/frame for "excellent"
+        elite_speed = 100.0        # pixels/frame for "elite"
+        explosive_speed = 150.0    # pixels/frame for "explosive"
+        
+        if hip_drive_peak >= explosive_speed:
+            # 95-100: Explosive power (150+ speed)
+            score_ratio = min(1.0, (hip_drive_peak - explosive_speed) / 50.0)  # Cap at 200 speed
+            hip_drive_score = 95.0 + (score_ratio * 5.0)
+            hip_drive_category = "explosive"
+        elif hip_drive_peak >= elite_speed:
+            # 85-94: Elite level drive (100-149 speed)
+            score_ratio = (hip_drive_peak - elite_speed) / (explosive_speed - elite_speed)
+            hip_drive_score = 85.0 + (score_ratio * 9.0)
+            hip_drive_category = "elite"
+        elif hip_drive_peak >= excellent_speed:
+            # 75-84: Excellent drive (60-99 speed)
+            score_ratio = (hip_drive_peak - excellent_speed) / (elite_speed - excellent_speed)
+            hip_drive_score = 75.0 + (score_ratio * 9.0)
+            hip_drive_category = "excellent"
+        elif hip_drive_peak >= solid_speed:
+            # 60-74: Solid drive (35-59 speed)
+            score_ratio = (hip_drive_peak - solid_speed) / (excellent_speed - solid_speed)
+            hip_drive_score = 60.0 + (score_ratio * 14.0)
+            hip_drive_category = "solid"
+        elif hip_drive_peak >= min_good_speed:
+            # 40-59: Good drive (15-34 speed)
+            score_ratio = (hip_drive_peak - min_good_speed) / (solid_speed - min_good_speed)
+            hip_drive_score = 40.0 + (score_ratio * 19.0)
+            hip_drive_category = "good"
+        elif hip_drive_peak > 0.0:
+            # 1-39: Weak but present movement (1-14 speed)
+            score_ratio = hip_drive_peak / min_good_speed
+            hip_drive_score = score_ratio * 39.0
+            hip_drive_category = "weak"
+        else:
+            hip_drive_score = 0.0
+            hip_drive_category = "none"
+        
+        hip_drive_norm = hip_drive_score / 100.0  # Keep legacy 0-1 scale for compatibility
+        hip_drive_good = bool(hip_drive_score >= 70.0)  # Good = 70+ score
+        # WRIST CONTROL MEASUREMENT - Setup phase before shot
+        # Good hockey shooting = smooth, controlled stick handling before release
+        # 
+        # HOW IT WORKS:
+        # 1. Shot detection finds peak wrist speed (the "release moment")
+        # 2. CONTROL WINDOW = 0.5-1.5 seconds BEFORE the release
+        # 3. We look for wrist moving BACKWARD (negative vx) during this window
+        # 4. We measure speed variation during this backward loading phase
+        # 5. Low variation = smooth setup, High variation = choppy setup
         if control_idx[1] > control_idx[0]:
             start_i, end_i = control_idx[0], control_idx[1]
             ctrl_len_sec = (end_i - start_i + 1) * (stride / max(1.0, fps))
             idxs = np.arange(start_i, end_i + 1)
             valid_mask = dominant_valid[idxs]
             valid_count = int(np.sum(valid_mask))
-            # Direction gating: require majority of frames moving back (vx <= 0)
+            
+            # Direction gating: require majority of frames moving back (wrist loading)
             dir_mask = wrist_vx[idxs] <= 0.0
             dir_frac = float(np.sum(dir_mask & valid_mask)) / float(max(1, valid_count)) if valid_count > 0 else 0.0
+            
             min_ctrl_sec = 0.4
             min_ctrl_samples = 6
             control_valid = bool(
                 (ctrl_len_sec >= min_ctrl_sec) and (valid_count >= min_ctrl_samples) and (dir_frac >= 0.7)
             )
+            
             if control_valid:
                 ctrl_sp = wrist_speed[idxs][valid_mask]
-                # Clip-normalized scoring using 90th percentile of valid speeds across clip
-                clip_valid_mask = dominant_valid.astype(bool)
-                global_ref = float(np.nanpercentile(wrist_speed[clip_valid_mask], 90) + 1e-6) if np.any(clip_valid_mask) else float(np.nanpercentile(wrist_speed, 90) + 1e-6)
+                
+                # Calculate control smoothness on 0-100 scale
+                # Smooth control = low speed variation during setup
                 ctrl_std = float(np.nanstd(ctrl_sp)) if ctrl_sp.size > 1 else 0.0
-                control_smoothness = float(np.clip(1.0 - (ctrl_std / global_ref), 0.0, 1.0))
+                ctrl_mean = float(np.nanmean(ctrl_sp)) if ctrl_sp.size > 0 else 0.0
+                
+                # Calculate coefficient of variation (std/mean)
+                if ctrl_mean > 0.0:
+                    variation_ratio = ctrl_std / ctrl_mean
+                    # Good control = variation ratio < 0.3
+                    # Excellent control = variation ratio < 0.15
+                    if variation_ratio <= 0.15:
+                        wrist_control_score = 100.0
+                        wrist_control_category = "smooth"
+                    elif variation_ratio <= 0.3:
+                        # Scale between 70-99 for good range
+                        score_ratio = (0.3 - variation_ratio) / (0.3 - 0.15)
+                        wrist_control_score = 70.0 + (score_ratio * 29.0)
+                        wrist_control_category = "controlled"
+                    elif variation_ratio <= 0.6:
+                        # Scale between 30-69 for choppy but manageable
+                        score_ratio = (0.6 - variation_ratio) / (0.6 - 0.3)
+                        wrist_control_score = 30.0 + (score_ratio * 39.0)
+                        wrist_control_category = "choppy"
+                    else:
+                        # Below 30 for very erratic movement
+                        wrist_control_score = max(0.0, 30.0 - (variation_ratio - 0.6) * 50.0)
+                        wrist_control_category = "erratic"
+                else:
+                    wrist_control_score = 0.0
+                    wrist_control_category = "undetected"
+                
+                control_smoothness = wrist_control_score / 100.0  # Keep legacy 0-1 scale
             else:
                 control_smoothness = 0.0
+                wrist_control_score = 0.0
+                wrist_control_category = "insufficient_data"
         else:
             control_smoothness = 0.0
+            wrist_control_score = 0.0
+            wrist_control_category = "no_setup_detected"
         # Focus on core body positions at point of release only
         # Enhanced form analysis for shot window
+        # 
+        # WRIST EXTENSION TIMING:
+        # Unlike setup control (measured BEFORE shot), wrist extension is measured
+        # during the SHOT WINDOW itself (the moment of release + immediate follow-through)
+        # This captures how well the arms extend toward the target during/after release
         shot_window_slice = slice(shot_idx[0], min(len(times), shot_idx[1]+1))
         
         # Average form metrics during shot window
         shot_head_metrics = head_metrics[shot_window_slice]
-        shot_upper_metrics = upper_body_metrics[shot_window_slice]
+        shot_wrist_metrics = wrist_extension_metrics[shot_window_slice]
         shot_lower_metrics = lower_body_metrics[shot_window_slice]
         
-        # Calculate averages for valid frames
+        # Calculate averages for valid frames (ignore None/0.0 values)
         def safe_average(metrics_list: List[Dict], key: str) -> Optional[float]:
-            values = [m[key] for m in metrics_list if m[key] is not None]
+            values = [m[key] for m in metrics_list if m[key] is not None and m[key] > 0.0]
             return float(np.mean(values)) if values else None
         
-        # Head position metrics
-        head_forward_lean = safe_average(shot_head_metrics, 'forward_lean')
-        head_eye_level = safe_average(shot_head_metrics, 'eye_level')
-        head_direction = safe_average(shot_head_metrics, 'head_direction')
+        # Head position metrics (0-100 scale)
+        head_up_score = safe_average(shot_head_metrics, 'head_up_score')
+        eyes_forward_score = safe_average(shot_head_metrics, 'eyes_forward_score')
         
-        # Upper body square metrics
-        shoulder_level = safe_average(shot_upper_metrics, 'shoulder_level')
-        arm_extension = safe_average(shot_upper_metrics, 'arm_extension')
-        target_alignment = safe_average(shot_upper_metrics, 'target_alignment')
+        # Wrist extension metrics (0-100 scale)
+        left_wrist_extension = safe_average(shot_wrist_metrics, 'left_wrist_extension_score')
+        right_wrist_extension = safe_average(shot_wrist_metrics, 'right_wrist_extension_score')
+        wrist_alignment = safe_average(shot_wrist_metrics, 'both_wrists_aligned_score')
+        follow_through_score = safe_average(shot_wrist_metrics, 'follow_through_score')
         
         # Lower body triangle metrics  
         front_knee_angles = [m['front_knee_bend'] for m in shot_lower_metrics if m['front_knee_bend'] is not None]
@@ -701,16 +835,26 @@ def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees
             "hip_drive": round(hip_drive_norm, 3),
             "hip_drive_good": hip_drive_good,
             "control_smoothness": round(control_smoothness, 3),
-            # Enhanced form analysis (core metrics)
+            
+            # NEW: Human-readable metrics (0-100 scores with clear meaning)
             "head_position": {
-                "forward_lean": round(head_forward_lean, 3) if head_forward_lean is not None else None,
-                "eye_level": round(head_eye_level, 3) if head_eye_level is not None else None,
-                "target_facing": round(head_direction, 3) if head_direction is not None else None
+                "head_up_score": round(head_up_score, 1) if head_up_score is not None else None,
+                "eyes_forward_score": round(eyes_forward_score, 1) if eyes_forward_score is not None else None
             },
-            "upper_body_square": {
-                "shoulder_level": round(shoulder_level, 3) if shoulder_level is not None else None,
-                "arm_extension": round(arm_extension, 3) if arm_extension is not None else None,
-                "target_alignment": round(target_alignment, 3) if target_alignment is not None else None
+            "wrist_control": {
+                "setup_control_score": round(wrist_control_score, 1) if 'wrist_control_score' in locals() else None,
+                "setup_control_category": wrist_control_category if 'wrist_control_category' in locals() else None
+            },
+            "wrist_extension": {
+                "left_wrist_extension_score": round(left_wrist_extension, 1) if left_wrist_extension is not None else None,
+                "right_wrist_extension_score": round(right_wrist_extension, 1) if right_wrist_extension is not None else None,
+                "both_wrists_aligned_score": round(wrist_alignment, 1) if wrist_alignment is not None else None,
+                "follow_through_score": round(follow_through_score, 1) if follow_through_score is not None else None
+            },
+            "hip_drive_analysis": {
+                "hip_drive_score": round(hip_drive_score, 1) if 'hip_drive_score' in locals() else None,
+                "hip_drive_category": hip_drive_category if 'hip_drive_category' in locals() else None,
+                "peak_forward_speed": round(hip_drive_peak, 1) if 'hip_drive_peak' in locals() else None
             },
             "lower_body_triangle": {
                 "front_knee_bend_deg": round(front_knee_bend_deg, 1) if front_knee_bend_deg is not None else None,
@@ -772,13 +916,13 @@ def analyze_drill(video_path: str) -> Dict:
     stride = 2
     (times, pose_series, fps, total_frames, duration_sec, knees, wrist_vx, 
      wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y,
-     shooting_side, front_leg, back_leg, head_metrics, upper_body_metrics, lower_body_metrics) = _extract_pose_features(use_path, stride)
+     shooting_side, front_leg, back_leg, head_metrics, wrist_extension_metrics, lower_body_metrics) = _extract_pose_features(use_path, stride)
 
     # Detect and analyze shots
     shot_events = _detect_and_analyze_shots(
         times, fps, stride, knees, wrist_vx, wrist_speed, dominant_valid, 
         hip_vx, active_wrist_y, active_shoulder_y, torso_height,
-        shooting_side, front_leg, back_leg, head_metrics, upper_body_metrics, lower_body_metrics
+        shooting_side, front_leg, back_leg, head_metrics, wrist_extension_metrics, lower_body_metrics
     )
 
     # Format final results

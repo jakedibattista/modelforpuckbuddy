@@ -143,7 +143,7 @@ def create_app() -> Flask:
                 # Import the real video analysis modules
                 import tempfile
                 import os
-                from analysis.shooting_drill_feedback import analyze_drill
+                from analysis.pose_extraction_shooting_drills import analyze_drill
                 from agents.data_summary_agent import generate_summary_with_gemini
                 
                 # Download video to temporary location for processing

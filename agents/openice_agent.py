@@ -63,45 +63,50 @@ class OpenIceAgent:
         session_id = str(uuid.uuid4())
         
         # Create the initial system prompt with analysis context
-        system_prompt = f"""You are OpenIce, a knowledgeable hockey coach who helps players of all ages improve their shooting.
+        system_prompt = f"""You are OpenIce, a direct hockey shooting coach who gives specific, actionable feedback.
 
 PLAYER'S SHOOTING SESSION DATA:
 {analysis_data}
 
-Your coaching approach:
-- Be encouraging and supportive, like a patient coach or mentor
-- Explain hockey concepts in clear, simple language that anyone can understand
-- Use helpful analogies when they make concepts easier to grasp
-- Acknowledge what's working well before suggesting areas to improve
-- Make technical feedback feel approachable and actionable
+RESPONSE RULES:
+1. ALWAYS reference specific data points from their session (scores, timestamps, angles)
+2. Keep responses under 150 words - be concise and actionable
+3. Focus on ONE main improvement area per response unless asked for multiple
+4. Use their exact scores/categories when giving feedback
+5. Give specific drills or techniques, not general advice
 
-When referencing technical data:
-- Always mention specific shot times (like "your shot at 00:15") to connect feedback to their experience
-- Translate technical terms into everyday language (e.g., "knee angle" becomes "how much you bent your knees")
-- Frame improvements positively ("this will help you get more power" rather than focusing on what's wrong)
+COACHING STYLE:
+- Direct but encouraging ("Your 72/100 head position needs work" not "head position could be better")
+- Data-driven ("At 00:08 your knee was 95° - aim for 100-110° for more power")
+- Actionable ("Try the wall drill: stand 6 inches from wall, practice keeping head up")
+- Personal ("YOUR shot at 00:15 vs shot at 00:08")
 
-When comparing to NHL players:
-- Explain what makes these players effective in simple terms
-- Help them understand techniques that anyone can work on
-- Remind them that all great players had to master the same fundamentals
+SCORE INTERPRETATION:
+- 80-100: excellent (celebrate it)
+- 60-79: good (minor tweaks)
+- Below 60: needs work (specific improvement)
 
-Keep your responses:
-- Conversational and warm (use "you" and "your")
-- Specific to their actual performance data
-- Focused on practical next steps
-- Clear and helpful without being overwhelming
-- Appropriate for families learning together
+NHL COMPARISONS:
+Only mention pros when specifically relevant to their data and include what technique to copy.
 
-Avoid using emojis, excessive exclamation points, or overly excited language. Keep it genuine and helpful.
+AVOID:
+- Generic advice ("practice makes perfect")
+- Long explanations of basic concepts
+- Multiple improvement areas in one response
+- Vague suggestions ("work on form")
+
+Be specific, be brief, be helpful.
 """
 
         try:
-            # Create chat session with Google Search enabled
+            # Create chat session with Google Search enabled and optimized for concise responses
             chat = self.client.chats.create(
                 model='gemini-2.5-flash',
                 config=types.GenerateContentConfig(
                     tools=[{"google_search": {}}],
-                    max_output_tokens=5000
+                    max_output_tokens=1000,  # Limit to ~150 words for concise responses
+                    temperature=0.3,        # Lower temperature for more focused responses
+                    top_p=0.8              # More focused sampling for consistency
                 )
             )
             
@@ -123,6 +128,18 @@ Avoid using emojis, excessive exclamation points, or overly excited language. Ke
         except Exception as exc:
             raise RuntimeError(f"Failed to create chat session: {exc}") from exc
     
+    def _enhance_question_with_context(self, question: str, session: Dict[str, Any]) -> str:
+        """Enhance user question with context hints to encourage specific responses."""
+        context_hints = [
+            "Reference my specific scores and timestamps.",
+            "Keep your answer under 150 words.",
+            "Focus on one main improvement area.",
+            "Give me a specific drill or technique to practice."
+        ]
+        
+        enhanced_question = f"{question}\n\n(Coach: {' '.join(context_hints)})"
+        return enhanced_question
+    
     def ask_question(self, session_id: str, question: str) -> Dict[str, Any]:
         """
         Ask a question in an existing chat session.
@@ -141,8 +158,11 @@ Avoid using emojis, excessive exclamation points, or overly excited language. Ke
         chat = session['chat']
         
         try:
-            # Send the question to the chat
-            response = chat.send_message(question)
+            # Enhance question with context hints for more focused responses
+            enhanced_question = self._enhance_question_with_context(question, session)
+            
+            # Send the enhanced question to the chat
+            response = chat.send_message(enhanced_question)
             
             # Update session metadata
             session['last_activity'] = datetime.now()
@@ -162,12 +182,30 @@ Avoid using emojis, excessive exclamation points, or overly excited language. Ke
                 if grounding.grounding_chunks:
                     sources = [chunk.web.title for chunk in grounding.grounding_chunks if hasattr(chunk, 'web')]
             
+            # Process and validate response quality
+            answer_text = response.text.strip()
+            
+            # Count words to check if response is too long
+            word_count = len(answer_text.split())
+            
+            # If response is too long, try to get a shorter version
+            if word_count > 200:
+                try:
+                    shorter_response = chat.send_message(
+                        "That response was too long. Give me the same advice in under 150 words, focusing on just the most important point."
+                    )
+                    answer_text = shorter_response.text.strip()
+                except:
+                    # If shortening fails, use original response
+                    pass
+            
             return {
-                'answer': response.text,
+                'answer': answer_text,
                 'search_queries': search_queries,
                 'sources': sources,
                 'session_id': session_id,
-                'message_count': session['message_count']
+                'message_count': session['message_count'],
+                'word_count': len(answer_text.split())
             }
             
         except Exception as exc:

@@ -9,7 +9,7 @@ Agents: data analysis, coaching feedback, and conversational AI coach (Gemini + 
 modelforpuckbuddy/
   analysis/                # Pose analysis
     __init__.py
-    shooting_drill_feedback.py  # analyze_drill(video_path) → dict
+    pose_extraction_shooting_drills.py  # analyze_drill(video_path) → dict
   agents/                  # AI agents for analysis and coaching
     __init__.py
     data_summary_agent.py    # structured per-shot data analysis
@@ -71,7 +71,7 @@ python -m agents.openice_agent --analysis-file results/drill/kidshoot4_drill_fee
 
 To generate an analysis JSON from a local video, install analysis dependencies (see `worker/requirements.txt` for reference: mediapipe, opencv-python-headless, numpy, etc.) and run:
 ```bash
-python -c "from analysis.shooting_drill_feedback import analyze_drill; import json; print(json.dumps(analyze_drill('videos/input/your_clip.mov'), indent=2))"
+python -c "from analysis.pose_extraction_shooting_drills import analyze_drill; import json; print(json.dumps(analyze_drill('videos/input/your_clip.mov'), indent=2))"
 ```
 
 ## Production Deployment

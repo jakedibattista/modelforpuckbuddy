@@ -63,7 +63,8 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
         t = float(s.get("shot_time_sec", 0.0))
         # Use front knee from enhanced analysis instead of general knee
         lower_body = s.get("lower_body_triangle", {}) or {}
-        front_knee_deg = float(lower_body.get("front_knee_bend_deg", 180.0))
+        front_knee_deg = lower_body.get("front_knee_bend_deg")
+        front_knee_deg = float(front_knee_deg) if front_knee_deg is not None else 180.0
         # Keep legacy for comparison but prefer front knee
         knee_deg = float(s.get("knee_bend_min_deg", 999.0))
         knee_score = float(s.get("knee_bend_score", 0.0))
@@ -73,19 +74,35 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
         ctrl_label = "smooth" if control >= 0.6 else ("jerky" if control <= 0.3 else "mixed")
         # Focus on core body positions only - removed follow-through
         
-        # Enhanced form analysis
+        # Enhanced form analysis - handle new 0-100 scale data format
         head_pos = s.get("head_position", {}) or {}
         upper_body = s.get("upper_body_square", {}) or {}
         lower_body = s.get("lower_body_triangle", {}) or {}
         
-        # Analyze head position (average of available metrics)
+        # New hip drive analysis (0-100 scale with categories)
+        hip_analysis = s.get("hip_drive_analysis", {})
+        if hip_analysis and hip_analysis.get("hip_drive_score") is not None:
+            hip_score = hip_analysis["hip_drive_score"]
+            hip_category = hip_analysis.get("hip_drive_category", "unknown")
+            # Convert 0-100 scale to legacy 0-1 scale for compatibility
+            hip = hip_score / 100.0
+            hip_good = hip_score >= 60.0  # Good threshold for new scale
+        
+        # New wrist control analysis
+        wrist_control = s.get("wrist_control", {})
+        if wrist_control and wrist_control.get("setup_control_score") is not None:
+            wrist_score = wrist_control["setup_control_score"]
+            wrist_category = wrist_control.get("setup_control_category", "unknown")
+            # Convert 0-100 scale to legacy 0-1 scale for compatibility
+            control = wrist_score / 100.0
+        
+        # Analyze head position (new 0-100 scale)
         head_metrics = [
-            head_pos.get("forward_lean"),
-            head_pos.get("eye_level"), 
-            head_pos.get("target_facing")
+            head_pos.get("head_up_score"),
+            head_pos.get("eyes_forward_score")
         ]
-        valid_head = [m for m in head_metrics if m is not None]
-        avg_head = float(sum(valid_head)) / len(valid_head) if valid_head else 0.0
+        valid_head = [m for m in head_metrics if m is not None and m > 0.0]
+        avg_head = float(sum(valid_head)) / len(valid_head) / 100.0 if valid_head else 0.0  # Convert to 0-1 scale
         
         # Analyze upper body square (average of available metrics)  
         upper_metrics = [
@@ -96,9 +113,9 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
         valid_upper = [m for m in upper_metrics if m is not None]
         avg_upper = float(sum(valid_upper)) / len(valid_upper) if valid_upper else 0.0
         
-        # Back leg extension analysis
+        # Back leg extension analysis  
         back_leg_deg = lower_body.get("back_leg_extension_deg")
-        front_knee_deg = lower_body.get("front_knee_bend_deg")
+        # front_knee_deg already handled above
 
         if hip_good:
             hip_good_times.append(t)
@@ -140,68 +157,68 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
     ww: List[str] = []
     if hip_good_times:
         if len(hip_good_times) >= 2:
-            times_str = f"shots at {format_timestamp(hip_good_times[0])}, {format_timestamp(hip_good_times[1])}"
+            times_str = f"at {format_timestamp(hip_good_times[0])} and {format_timestamp(hip_good_times[1])}"
         else:
-            times_str = f"shot at {format_timestamp(hip_good_times[0])}"
-        ww.append(f"Strong hip drive on {times_str} — driving power through the puck!")
+            times_str = f"at {format_timestamp(hip_good_times[0])}"
+        ww.append(f"Nice hip drive {times_str} - you're really driving through the puck")
     
     if knee_good_times:
         best = min(knee_good_times, key=lambda x: x[1])
-        ww.append(f"Excellent front knee bend at {format_timestamp(best[0])} ({best[1]:.0f}°) — getting low for power!")
+        ww.append(f"Great knee bend at {format_timestamp(best[0])} ({best[1]:.0f}°) - getting down low like the pros")
     
     if steady_times:
         if len(steady_times) >= 2:
-            times_str = f"{format_timestamp(steady_times[0])}, {format_timestamp(steady_times[1])}"
+            times_str = f"at {format_timestamp(steady_times[0])} and {format_timestamp(steady_times[1])}"
         else:
-            times_str = format_timestamp(steady_times[0])
-        ww.append(f"Smooth, controlled setup at {times_str} — great tempo and rhythm.")
+            times_str = f"at {format_timestamp(steady_times[0])}"
+        ww.append(f"Really smooth setup {times_str} - tempo looked solid")
     
     if excellent_head_times:
         time_ref = format_timestamp(excellent_head_times[0])
-        ww.append(f"Excellent head position at {time_ref} — eyes up and forward toward target!")
+        ww.append(f"Head position was money at {time_ref} - eyes locked on target")
     
     if excellent_upper_times:
         time_ref = format_timestamp(excellent_upper_times[0])
-        ww.append(f"Outstanding upper body form at {time_ref} — shoulders square and arms extended.")
+        ww.append(f"Upper body looked dialed in at {time_ref} - nice square shoulders")
     
     if good_back_leg_times:
         time_ref = format_timestamp(good_back_leg_times[0])
-        ww.append(f"Solid back leg extension at {time_ref} — driving power through properly.")
+        ww.append(f"Back leg extension at {time_ref} was solid - driving power through")
     
     if not ww:
-        ww.append("Good effort and consistency — keep building these fundamentals.")
+        ww.append("Effort was there - let's keep working on the fundamentals")
 
     # Build what to work on with specific shot references
     wt: List[str] = []
     if knee_shallow_degs:
         avg_deg = sum(knee_shallow_degs) / len(knee_shallow_degs)
-        wt.append(f"Get lower on your front knee — aim for 100-110° bend (currently averaging {avg_deg:.0f}°).")
+        wt.append(f"Need to get lower on that front knee - aim for 100-110° (you're at {avg_deg:.0f}°)")
     
     if hip_weak_times:
         if len(hip_weak_times) >= 2:
-            times_str = f"shots at {format_timestamp(hip_weak_times[0])}, {format_timestamp(hip_weak_times[1])}"
+            times_str = f"at {format_timestamp(hip_weak_times[0])} and {format_timestamp(hip_weak_times[1])}"
         else:
-            times_str = f"shot at {format_timestamp(hip_weak_times[0])}"
-        wt.append(f"Drive hips forward more aggressively on {times_str} — push through the puck!")
+            times_str = f"at {format_timestamp(hip_weak_times[0])}"
+        wt.append(f"Drive those hips harder {times_str} - really push through the puck")
     
     if jerky_times:
         time_ref = format_timestamp(jerky_times[0])
-        wt.append(f"Smooth out the setup tempo (see {time_ref}) — avoid rushed, choppy movement.")
+        wt.append(f"Setup looked a bit rushed at {time_ref} - take your time and be smooth")
     
     if bent_back_leg_times:
         worst = min(bent_back_leg_times, key=lambda x: x[1])
-        wt.append(f"Straighten that back leg at {format_timestamp(worst[0])} — extend to 170° (currently {worst[1]:.0f}°).")
+        wt.append(f"Straighten that back leg at {format_timestamp(worst[0])} - need it closer to 170° (you're at {worst[1]:.0f}°)")
     
     if poor_head_times:
         time_ref = format_timestamp(poor_head_times[0])
-        wt.append(f"Keep head up and forward at {time_ref} — eyes locked on target throughout.")
+        wt.append(f"Head dropped a bit at {time_ref} - keep those eyes up and locked on target")
     
     if poor_upper_times:
         time_ref = format_timestamp(poor_upper_times[0])
-        wt.append(f"Square up your shoulders at {time_ref} — both arms extending toward target.")
+        wt.append(f"Square up those shoulders at {time_ref} - both arms extending through")
     
     if not wt:
-        wt.append("Focus on consistency and repetition — keep building these strong fundamentals.")
+        wt.append("Keep grinding - consistency is key to building muscle memory")
 
     # Trim to 2–3 each
     return ww[:3], wt[:3]
@@ -218,28 +235,34 @@ def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite")
     draft = "**What went well:**\n" + "\n".join(f"- {b}" for b in ww) + "\n\n" + "**What to work on:**\n" + "\n".join(f"- {b}" for b in wt)
 
     system = (
-        "You are a supportive youth hockey coach providing SPECIFIC feedback. Rewrite the DRAFT into the SAME two sections, keeping all specific details intact.\n\n"
+        "You are Seth, an assistant hockey coach texting feedback after practice. Rewrite the DRAFT to sound like authentic coaching messages.\n\n"
         
-        "CRITICAL: The draft contains specific shot timestamps (MM:SS format) and exact measurements - PRESERVE ALL OF THESE.\n"
-        "- Keep all time references (e.g., 'at 00:08', 'shots at 00:08, 00:15')\n"
-        "- Keep all degree measurements (e.g., '92°', 'currently 140°')\n"
-        "- Keep all specific technical details and comparisons\n\n"
+        "CRITICAL: Keep ALL specific timestamps and measurements from the draft exactly as written.\n"
+        "- Preserve all time references (e.g., 'at 00:08', 'at 00:08 and 00:15')\n"
+        "- Keep all degree measurements (e.g., '92°', 'you're at 140°')\n"
+        "- Maintain all technical details and comparisons\n\n"
         
-        "Technical accuracy rules:\n"
-        "- Front knee bend: LOWER degrees = deeper/better. Ideal ≈ 90-110°. ≤110° = excellent; ≥140° = too shallow\n"
-        "- Hip drive: 0-1 scale; ≥0.3 = good drive, <0.3 = needs more aggression\n"
-        "- Back leg extension: 160-180° = good; <150° = too bent and loses power\n"
-        "- Head/upper body form: 0-1 scale; ≥0.8 = excellent; 0.6-0.79 = good; <0.6 = needs work\n\n"
+        "COACHING VOICE - Sound like a real assistant coach:\n"
+        "- Casual but knowledgeable ('that was money', 'really driving through', 'need to get lower')\n"
+        "- Direct and honest without being harsh\n"
+        "- Mix praise with specific areas to improve\n"
+        "- Use hockey slang naturally ('dialed in', 'locked on target', 'driving power through')\n"
+        "- Sound like you actually watched their shots\n\n"
         
-        "Style guidelines:\n"
-        "- Use energetic, specific coaching language\n"
-        "- Reference exact timestamps and measurements from the draft\n"
-        "- Avoid generic phrases like 'keep practicing' or 'work on fundamentals'\n"
-        "- Focus on actionable, specific improvements with concrete targets\n"
-        "- Maintain positive, encouraging tone while being precise\n\n"
+        "TONE EXAMPLES:\n"
+        "✅ 'Head position was money at 00:08 - eyes locked on target'\n"
+        "✅ 'Need to get lower on that front knee - aim for 100-110° (you're at 145°)'\n"
+        "✅ 'Really smooth setup at 00:15 - tempo looked solid'\n"
+        "❌ 'Excellent head positioning demonstrates strong fundamentals'\n"
+        "❌ 'Continue to work on improving your technique'\n\n"
         
-        "Output format: Exactly two sections titled '**What went well:**' and '**What to work on:**' with 2-3 specific bullets each.\n\n"
-        "IMPORTANT: Output ONLY these two sections with BOLD HEADERS. Do NOT add any introductory text, greeting, or additional commentary. Start directly with '**What went well:**'"
+        "Technical knowledge (unchanged from draft):\n"
+        "- Front knee: Lower degrees = better (90-110° ideal)\n"
+        "- Hip drive: Forward momentum through the puck\n"
+        "- Back leg: Should extend 160-180° for power transfer\n\n"
+        
+        "Output format: Exactly two sections '**What went well:**' and '**What to work on:**' with 2-3 bullets each.\n"
+        "Start directly with '**What went well:**' - no intro text."
     )
 
     resp = client.models.generate_content(
