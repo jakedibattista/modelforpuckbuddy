@@ -17,7 +17,13 @@ from agents.openice_agent import OpenIceAgent
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    CORS(app, origins=os.getenv("CORS_ORIGIN", "*"))
+    
+    # Enhanced CORS configuration for browser/Expo web compatibility
+    CORS(app, 
+         origins=os.getenv("CORS_ORIGIN", "*"),
+         methods=["GET", "POST", "OPTIONS"],
+         allow_headers=["Content-Type", "Authorization"],
+         supports_credentials=True)
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("signed_url_api")
@@ -139,7 +145,6 @@ def create_app() -> Flask:
                 import os
                 from analysis.shooting_drill_feedback import analyze_drill
                 from agents.data_summary_agent import generate_summary_with_gemini
-                from agents.seth_shooting_agent import generate_sections
                 
                 # Download video to temporary location for processing
                 logger.info("Downloading video for pose analysis")
@@ -162,21 +167,14 @@ def create_app() -> Flask:
                     if not shots:
                         logger.warning("Pose analysis returned no shot events")
                         # Provide a helpful, successful response for no-shots cases
-                        parent_summary = (
-                            "I didn't detect any clear shooting events in this video. "
+                        data_analysis = (
+                            "**No shots detected in this video.**\n\n"
                             "For best results: ensure the full body and stick are visible, keep the camera steady, and film 10–15 reps."
-                        )
-                        coach_summary = (
-                            "What to try next:\n"
-                            "- Capture from the side at waist height so knees and stick are visible\n"
-                            "- Stand ~10–15 feet from the player\n"
-                            "- Record at least 20–30 seconds with multiple shot attempts"
                         )
                         return jsonify({
                             "success": True,
                             "analysis": {
-                                "data_analysis": parent_summary,
-                                "coach_summary": coach_summary,
+                                "data_analysis": data_analysis,
                                 "shots_detected": 0,
                                 "video_duration": video_duration,
                                 "video_size_mb": round(video_size_mb, 1),
@@ -186,25 +184,43 @@ def create_app() -> Flask:
                             }
                         })
                     
-                    # Generate AI summaries using the real analysis
-                    logger.info("Generating parent summary with Gemini")
-                    parent_summary = generate_summary_with_gemini(analysis_results)
-                    
-                    logger.info("Generating coach analysis with Gemini")
-                    coach_analysis = generate_sections(analysis_results)
+                    # Generate data summary only (simplified for efficiency)
+                    logger.info("Generating data summary with Gemini")
+                    data_analysis = generate_summary_with_gemini(analysis_results)
                     
                     logger.info("Full video analysis completed successfully")
+                    
+                    # Clean up any old completed jobs for this user to prevent accumulation
+                    try:
+                        old_jobs_ref = (
+                            manager.db.collection("jobs")
+                            .where("userId", "==", user_id)
+                            .where("status", "==", "completed")
+                            .limit(10)  # Clean up a reasonable number
+                        )
+                        
+                        batch = manager.db.batch()
+                        cleanup_count = 0
+                        for old_job in old_jobs_ref.stream():
+                            batch.delete(old_job.reference)
+                            cleanup_count += 1
+                            
+                        if cleanup_count > 0:
+                            batch.commit()
+                            logger.info(f"Auto-cleaned {cleanup_count} old completed jobs for user {user_id}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"Failed to auto-cleanup old jobs: {cleanup_error}")
                     
                     return jsonify({
                         "success": True,
                         "analysis": {
-                            "data_analysis": parent_summary,
-                            "coach_summary": coach_analysis,
+                            "data_analysis": data_analysis,
                             "shots_detected": len(shots),
                             "video_duration": video_duration,
                             "video_size_mb": round(video_size_mb, 1),
                             "pose_analysis": True,
-                            "message": "Complete video analysis with MediaPipe pose detection"
+                            "message": "MediaPipe pose analysis with structured data summary",
+                            "raw_analysis": analysis_results  # Include for coach endpoints
                         }
                     })
                     
@@ -271,6 +287,7 @@ def create_app() -> Flask:
     # OpenIce AI Coach Endpoints
     # ------------------------------------------------------------------
     
+    # Primary endpoints (current naming)
     @app.route("/api/start-chat", methods=["POST"])
     def start_chat() -> tuple:
         """Create a new OpenIce chat session with analysis data."""
@@ -340,6 +357,254 @@ def create_app() -> Flask:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to get chat session info")
             return jsonify({"error": "Failed to get session info"}), 500
+
+    # ------------------------------------------------------------------
+    # Client-Expected OpenIce Endpoints (aliases for compatibility)
+    # ------------------------------------------------------------------
+    
+    @app.route("/api/openice/init", methods=["POST", "OPTIONS"])
+    def openice_init() -> tuple:
+        """Initialize OpenIce session - client-expected endpoint."""
+        if request.method == "OPTIONS":
+            # Handle preflight request
+            return jsonify({"status": "OK"}), 200
+            
+        payload = request.get_json() or {}
+        analysis_data = payload.get("analysis_data")
+        user_id = payload.get("user_id", "anonymous")
+        
+        if not analysis_data:
+            return jsonify({"error": "analysis_data is required"}), 400
+        
+        try:
+            agent = get_openice_agent()
+            session_id = agent.create_chat_session(analysis_data, user_id)
+            
+            # Get an initial response to provide immediate value
+            initial_question = "What should I work on first based on this analysis?"
+            result = agent.ask_question(session_id, initial_question)
+            
+            return jsonify({
+                "success": True,
+                "session_id": session_id,
+                "user_id": user_id,
+                "openice_response": result["answer"],
+                "sources": result.get("sources", []),
+                "search_queries": result.get("search_queries", []),
+                "message": "OpenIce session initialized with initial coaching advice"
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to initialize OpenIce session")
+            return jsonify({"error": "Failed to initialize session"}), 500
+    
+    @app.route("/api/openice/chat", methods=["POST", "OPTIONS"])
+    def openice_chat() -> tuple:
+        """Send chat message to OpenIce - client-expected endpoint."""
+        if request.method == "OPTIONS":
+            # Handle preflight request
+            return jsonify({"status": "OK"}), 200
+            
+        payload = request.get_json() or {}
+        session_id = payload.get("session_id")
+        question = payload.get("question") or payload.get("message")
+        
+        if not session_id or not question:
+            return jsonify({"error": "session_id and question are required"}), 400
+        
+        try:
+            agent = get_openice_agent()
+            result = agent.ask_question(session_id, question)
+            
+            return jsonify({
+                "success": True,
+                "openice_response": result["answer"],
+                "search_queries": result.get("search_queries", []),
+                "sources": result.get("sources", []),
+                "session_id": session_id,
+                "message_count": result.get("message_count", 0)
+            })
+        except ValueError as exc:
+            # Session not found
+            return jsonify({"error": str(exc)}), 404
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to process OpenIce chat")
+            return jsonify({"error": "Failed to process chat message"}), 500
+
+    # ------------------------------------------------------------------
+    # Job Management and Cleanup Endpoints
+    # ------------------------------------------------------------------
+    
+    @app.route("/api/job/complete", methods=["POST"])
+    def mark_job_complete() -> tuple:
+        """Mark a job as completed and clean it up from the queue."""
+        payload = request.get_json() or {}
+        user_id = payload.get("user_id")
+        job_id = payload.get("job_id")
+        
+        if not user_id:
+            return jsonify({"error": "user_id is required"}), 400
+            
+        try:
+            manager = get_manager()
+            
+            if job_id:
+                # Complete specific job
+                job_ref = manager.db.collection("jobs").document(job_id)
+                job_doc = job_ref.get()
+                
+                if not job_doc.exists:
+                    return jsonify({"error": f"Job {job_id} not found"}), 404
+                    
+                job_data = job_doc.to_dict()
+                if job_data.get("userId") != user_id:
+                    return jsonify({"error": "Access denied"}), 403
+                
+                # Delete the completed job
+                job_ref.delete()
+                logger.info(f"Deleted completed job {job_id} for user {user_id}")
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Job {job_id} completed and cleaned up",
+                    "job_id": job_id
+                })
+            else:
+                # Complete all completed jobs for this user
+                jobs_ref = (
+                    manager.db.collection("jobs")
+                    .where("userId", "==", user_id)
+                    .where("status", "==", "completed")
+                )
+                
+                deleted_count = 0
+                batch = manager.db.batch()
+                
+                for job_doc in jobs_ref.stream():
+                    batch.delete(job_doc.reference)
+                    deleted_count += 1
+                    
+                if deleted_count > 0:
+                    batch.commit()
+                    logger.info(f"Deleted {deleted_count} completed jobs for user {user_id}")
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Cleaned up {deleted_count} completed jobs",
+                    "deleted_count": deleted_count
+                })
+                
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to mark job as complete")
+            return jsonify({"error": "Failed to complete job"}), 500
+    
+    @app.route("/api/jobs/cleanup", methods=["POST"])
+    def cleanup_old_jobs() -> tuple:
+        """Clean up old jobs for a user (completed, failed, or stale)."""
+        payload = request.get_json() or {}
+        user_id = payload.get("user_id")
+        max_age_hours = payload.get("max_age_hours", 24)
+        
+        if not user_id:
+            return jsonify({"error": "user_id is required"}), 400
+            
+        try:
+            manager = get_manager()
+            
+            # Calculate cutoff time
+            from datetime import datetime, timedelta
+            cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
+            
+            # Find old jobs (completed, failed, or old queued jobs)
+            old_jobs_ref = (
+                manager.db.collection("jobs")
+                .where("userId", "==", user_id)
+                .where("createdAt", "<", cutoff_time)
+            )
+            
+            deleted_count = 0
+            batch = manager.db.batch()
+            
+            for job_doc in old_jobs_ref.stream():
+                job_data = job_doc.to_dict()
+                status = job_data.get("status")
+                
+                # Only delete completed, failed, or very old queued jobs
+                if status in ["completed", "failed"] or (
+                    status == "queued" and max_age_hours > 1
+                ):
+                    batch.delete(job_doc.reference)
+                    deleted_count += 1
+                    
+            if deleted_count > 0:
+                batch.commit()
+                logger.info(f"Cleaned up {deleted_count} old jobs for user {user_id}")
+            
+            return jsonify({
+                "success": True,
+                "message": f"Cleaned up {deleted_count} old jobs",
+                "deleted_count": deleted_count,
+                "cutoff_hours": max_age_hours
+            })
+            
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to cleanup old jobs")
+            return jsonify({"error": "Failed to cleanup jobs"}), 500
+
+    # ------------------------------------------------------------------
+    # Coach-Specific Endpoints
+    # ------------------------------------------------------------------
+    
+    @app.route("/api/coach/seth", methods=["POST"])
+    def get_seth_coaching() -> tuple:
+        """Generate Seth's coaching feedback from analysis data."""
+        payload = request.get_json() or {}
+        
+        # Can accept either raw analysis data or reference to completed analysis
+        raw_analysis = payload.get("raw_analysis")
+        user_id = payload.get("user_id")
+        analysis_id = payload.get("analysis_id")  # Future: reference to stored analysis
+        
+        if not raw_analysis:
+            return jsonify({"error": "raw_analysis is required"}), 400
+            
+        try:
+            # Import seth shooting agent
+            from agents.seth_shooting_agent import generate_sections
+            
+            logger.info("Generating Seth coaching feedback")
+            coach_feedback = generate_sections(raw_analysis)
+            
+            return jsonify({
+                "success": True,
+                "coach_id": "seth",
+                "coach_name": "Seth",
+                "coaching_feedback": coach_feedback,
+                "message": "Seth's coaching analysis completed"
+            })
+            
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to generate Seth coaching feedback")
+            return jsonify({"error": "Failed to generate coaching feedback"}), 500
+    
+    @app.route("/api/coaches", methods=["GET"])
+    def list_available_coaches() -> tuple:
+        """List available coaching personalities."""
+        coaches = [
+            {
+                "id": "seth",
+                "name": "Seth",
+                "description": "Focused technical feedback with specific timestamps and metrics",
+                "specialties": ["technique", "fundamentals", "specific_improvements"],
+                "endpoint": "/api/coach/seth"
+            }
+            # Future coaches can be added here
+        ]
+        
+        return jsonify({
+            "success": True,
+            "coaches": coaches,
+            "count": len(coaches)
+        })
 
     return app
 

@@ -84,14 +84,24 @@ The backend API is deployed to Cloud Run and ready for production use:
 **Core Video Analysis:**
 - `GET /health` - Service health check
 - `POST /api/upload-url` - Generate signed URL for video upload
-- `POST /api/analyze-video` - ⭐ **Simple**: Upload video and get analysis results with MediaPipe pose detection
+- `POST /api/analyze-video` - ⭐ **Simple**: MediaPipe pose analysis + structured data summary
 - `POST /api/submit-video` - Create analysis job (advanced workflow)
 - `GET /api/results/{user_id}` - List user's analysis results (advanced workflow)
+
+**Coaching Feedback:**
+- `GET /api/coaches` - List available coaching personalities
+- `POST /api/coach/seth` - Get Seth's technical coaching feedback
 
 **OpenIce AI Coach (Optional):**
 - `POST /api/start-chat` - Create conversational coaching session with analysis data
 - `POST /api/ask-question` - Ask questions about technique, get personalized advice
 - `GET /api/chat-info/<session_id>` - Get chat session information
+- `POST /api/openice/init` - Client-compatible: Initialize OpenIce session with immediate response
+- `POST /api/openice/chat` - Client-compatible: Send chat messages to OpenIce
+
+**Job Management & Cleanup:**
+- `POST /api/job/complete` - Mark job as completed and clean up from queue
+- `POST /api/jobs/cleanup` - Clean up old jobs (completed, failed, or stale)
 
 ### Testing the deployment:
 ```bash
@@ -108,28 +118,65 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload
 
 ### Simple Approach (Recommended for most apps):
 ```bash
-# Test the simple workflow
+# Step 1: Get upload URL
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload-url \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","content_type":"video/mov"}'
 
-# Upload video using returned URL, then:
+# Step 2: Upload video using returned URL, then analyze
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyze-video \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","storage_path":"users/test123/..."}'
+
+# Step 3 (Optional): Get coaching feedback  
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","raw_analysis":"[analysis_data_from_step_2]"}'
 ```
 
 ### OpenIce AI Coach Integration (Optional):
 ```bash
-# After getting analysis results, start conversational coaching
+# Method 1: Traditional endpoints
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/start-chat \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","analysis_data":"**Shots detected at timestamps:** 00:08, 00:15..."}'
 
-# Ask coaching questions  
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/ask-question \
   -H "Content-Type: application/json" \
   -d '{"session_id":"your-session-id","question":"How can I shoot like Connor McDavid?"}'
+
+# Method 2: Client-compatible endpoints (with CORS support)
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/openice/init \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","analysis_data":"**Shots detected at timestamps:** 00:08, 00:15..."}'
+
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/openice/chat \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"session-id","question":"What drill should I practice?"}'
+```
+
+### Coaching Feedback Integration:
+```bash
+# List available coaches
+curl -X GET https://puck-buddy-model-22317830094.us-central1.run.app/api/coaches
+
+# Get Seth's coaching feedback (requires raw_analysis from analyze-video)
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","raw_analysis":{"shots":[{"shot_time_sec":8.2,"knee_bend_min_deg":95}]}}'
+```
+
+### Job Management & Cleanup:
+```bash
+# Clean up completed jobs for a user (prevents queue accumulation)
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/job/complete \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123"}'
+
+# Clean up old jobs (completed, failed, or stale after 24 hours)
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/jobs/cleanup \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","max_age_hours":24}'
 ```
 
 ### Advanced Integration:
