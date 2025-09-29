@@ -169,11 +169,21 @@ const analysis = await fetch('YOUR_API_BASE/api/analyze-video', {
 
 | Endpoint | Purpose | Time |
 |----------|---------|------|
+| `/health` | Health check | instant |
 | `/api/upload-url` | Get upload URL | instant |
 | `/api/analyze-video` | Analyze video | 2 min |
+| `/api/submit-video` | Submit job (advanced) | instant |
+| `/api/download-url` | Get download URL | instant |
+| `/api/results/{user_id}` | List user results | instant |
+| `/api/coaches` | List coaches | instant |
 | `/api/coach/seth` | Seth's coaching | 15 sec |
-| `/api/openice/init` | Start AI chat | 5 sec |
-| `/api/openice/chat` | Ask AI questions | 10 sec |
+| `/api/start-chat` | Start OpenIce chat | 5 sec |
+| `/api/ask-question` | Ask OpenIce question | 10 sec |
+| `/api/chat-info/{session_id}` | Get chat info | instant |
+| `/api/openice/init` | Start AI chat (client) | 5 sec |
+| `/api/openice/chat` | Ask AI questions (client) | 10 sec |
+| `/api/job/complete` | Mark job complete | instant |
+| `/api/jobs/cleanup` | Clean up old jobs | instant |
 
 ## Tips
 
