@@ -1,6 +1,6 @@
 # 🏒 Hockey Video Testing Guide
 
-Quick guide to test the PuckBuddy video analysis system locally.
+Quick guide to test the PuckBuddy video analysis system locally and via API.
 
 ## Setup
 
@@ -19,15 +19,34 @@ Sample videos are in `videos/input/` - try with `kidshoot4.mov` for best results
 
 ---
 
-## Testing APIs
+## Testing Complete API Flow
 
-### Test Video Analysis
+### Full 3-Step Workflow Test
+
+**Step 1: Get Upload URL**
 ```bash
-# Basic analysis (MediaPipe + data summary)
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload-url \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","content_type":"video/mov"}'
+```
+
+**Step 2: Upload Video**
+```bash
+# Use the upload_url from Step 1
+curl -X PUT "[upload_url_from_step_1]" \
+  -H "Content-Type: video/mov" \
+  --data-binary "@videos/input/kidshoot4.mov"
+```
+
+**Step 3: Analyze Video**
+```bash
+# Use the storage_path from Step 1
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyze-video \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"test123","storage_path":"users/test123/videos/test.mov"}'
+  -d '{"user_id":"test123","storage_path":"users/test123/videos/20240315_143022_shooting_drill.mov"}'
 ```
+
+**Expected wait time:** ~2 minutes for analysis to complete
 
 ### Test Seth Coaching
 ```bash
@@ -42,6 +61,41 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/
 # List coaching options
 curl -X GET https://puck-buddy-model-22317830094.us-central1.run.app/api/coaches
 ```
+
+### Test OpenIce AI Chat
+```bash
+# Initialize OpenIce session
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/openice/init \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","analysis_data":"**Shots detected:** 3 shots at 00:08, 00:15, 00:23"}'
+
+# Ask follow-up questions (use session_id from previous response)
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/openice/chat \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"session-abc123","question":"What drill should I practice?"}'
+```
+
+---
+
+## Rate Limits & Security
+
+### Rate Limits (Per User)
+When testing, be aware of these limits:
+
+| Action | Limit | Reset |
+|--------|-------|-------|
+| Upload URLs | 20/hour | Per hour |
+| Video Analysis | **10/hour** | Per hour |
+| All requests | 200/day | Per day |
+
+**If you hit the limit:**
+- Wait 1 hour for hourly limits to reset
+- Response: `429 Too Many Requests`
+
+### Security Requirements
+- **Firebase Auth**: Production requires authenticated users
+- **Signed URLs**: Upload URLs expire after 1 hour
+- **Auto-cleanup**: Files deleted after 30 days
 
 ---
 
@@ -137,13 +191,40 @@ curl https://puck-buddy-model-22317830094.us-central1.run.app/health
 ```
 
 ### Check Processing Time
-- Upload URL: instant
-- Video analysis: 2-3 minutes
-- Seth coaching: 15 seconds
-- OpenIce chat: 5-15 seconds
+- Upload URL generation: instant
+- Video upload: 10-30 seconds (depends on video size)
+- Video analysis: ~2 minutes (MediaPipe pose detection)
+- Seth coaching: ~15 seconds
+- OpenIce chat: 5-10 seconds per message
 
 ### Check Response Format
 All successful responses have `"success": true` and relevant data. Errors return helpful messages with specific guidance.
+
+### Common Error Responses
+
+**Rate Limit Exceeded:**
+```json
+{
+  "error": "429 Too Many Requests: 10 per 1 hour"
+}
+```
+**Solution:** Wait 1 hour before trying again
+
+**Video Not Found:**
+```json
+{
+  "error": "Video not found: users/test123/videos/test.mov"
+}
+```
+**Solution:** Verify the storage_path matches the upload_url response
+
+**Invalid Request:**
+```json
+{
+  "error": "user_id and storage_path are required"
+}
+```
+**Solution:** Include all required fields in request
 
 ---
 
@@ -159,3 +240,39 @@ The system tracks these key hockey shooting metrics:
 - **Body alignment**: Square to target
 
 All measurements are relative to good hockey shooting technique and provided in simple, coaching-friendly language.
+
+---
+
+## Testing Best Practices
+
+### For Local Development
+1. Start with existing analysis JSON files in `results/drill/`
+2. Test agents individually before testing full pipeline
+3. Use small test videos (10-30 seconds) to iterate quickly
+
+### For API Testing
+1. **Check health endpoint** before running tests
+2. **Use test user IDs** (e.g., "test123") to avoid mixing with production data
+3. **Wait for completion** - video analysis takes ~2 minutes, don't retry immediately
+4. **Track rate limits** - max 10 videos per hour during testing
+5. **Save responses** - helpful for debugging and comparing results
+
+### Automated Testing
+```bash
+# Quick health check
+curl -s https://puck-buddy-model-22317830094.us-central1.run.app/health | jq .
+
+# Test with timeout (analysis takes ~2 min)
+curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyze-video \
+  --max-time 180 \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test123","storage_path":"users/test123/videos/test.mov"}'
+```
+
+---
+
+## Need Help?
+
+- **API Documentation**: See `API_GUIDE.md` for complete endpoint reference
+- **Architecture**: See `ARCHITECTURE.md` for system design details  
+- **iOS Integration**: See `IOS_INTEGRATION.md` for mobile app examples
