@@ -239,13 +239,139 @@ Be specific, be brief, be helpful.
         return len(old_sessions)
 
 
+def parse_raw_pose_analysis(raw_analysis: Dict[str, Any]) -> str:
+    """
+    Convert raw pose_extraction_shooting_drills.py output into readable analysis text.
+    
+    Args:
+        raw_analysis: Raw output from analyze_drill() function
+        
+    Returns:
+        Human-readable analysis text for OpenIce coaching
+    """
+    try:
+        # Extract key information from raw analysis
+        video_name = raw_analysis.get('video', 'Unknown video')
+        duration = raw_analysis.get('duration_est_sec', 0)
+        fps = raw_analysis.get('fps', 30)
+        shots = raw_analysis.get('shots', [])
+        
+        if not shots:
+            return f"**Video Analysis: {video_name}**\n\nNo shots detected in this {duration:.1f} second video. For best results, ensure the full body and stick are visible, keep the camera steady, and film 10-15 shooting reps."
+        
+        # Build readable analysis text
+        analysis_lines = [
+            f"**Video Analysis: {video_name}**",
+            f"Duration: {duration:.1f} seconds | FPS: {fps} | Shots detected: {len(shots)}",
+            ""
+        ]
+        
+        for i, shot in enumerate(shots, 1):
+            shot_time = shot.get('shot_time_sec', 0)
+            analysis_lines.append(f"**Shot {i}: {shot_time:.1f}s**")
+            
+            # Head position metrics
+            head_pos = shot.get('head_position', {})
+            if head_pos.get('head_up_score') is not None:
+                head_score = head_pos['head_up_score']
+                analysis_lines.append(f"**head position:** head {_score_to_category(head_score)} ({head_score:.0f}/100)")
+            
+            if head_pos.get('eyes_forward_score') is not None:
+                eyes_score = head_pos['eyes_forward_score']
+                analysis_lines.append(f"**eyes focused:** {_score_to_category(eyes_score)} ({eyes_score:.0f}/100)")
+            
+            # Wrist control and extension
+            wrist_control = shot.get('wrist_control', {})
+            if wrist_control.get('setup_control_score') is not None:
+                control_score = wrist_control['setup_control_score']
+                control_category = wrist_control.get('setup_control_category', 'unknown')
+                analysis_lines.append(f"**wrist control:** {control_category} setup ({control_score:.0f}/100)")
+            
+            wrist_ext = shot.get('wrist_extension', {})
+            if wrist_ext.get('follow_through_score') is not None:
+                follow_score = wrist_ext['follow_through_score']
+                analysis_lines.append(f"**wrist extension:** {_score_to_category(follow_score)} follow-through ({follow_score:.0f}/100)")
+            
+            # Hip drive analysis
+            hip_analysis = shot.get('hip_drive_analysis', {})
+            if hip_analysis.get('hip_drive_score') is not None:
+                hip_score = hip_analysis['hip_drive_score']
+                hip_category = hip_analysis.get('hip_drive_category', 'unknown')
+                hip_speed = hip_analysis.get('peak_forward_speed', 0)
+                analysis_lines.append(f"**hip drive:** {hip_category} ({hip_score:.0f}/100, {hip_speed:.1f} speed)")
+            
+            # Lower body triangle
+            lower_body = shot.get('lower_body_triangle', {})
+            if lower_body.get('front_knee_bend_deg') is not None:
+                knee_angle = lower_body['front_knee_bend_deg']
+                analysis_lines.append(f"**front knee bend:** {knee_angle:.0f}° ({_knee_angle_category(knee_angle)})")
+            
+            if lower_body.get('back_leg_extension_deg') is not None:
+                back_angle = lower_body['back_leg_extension_deg']
+                analysis_lines.append(f"**back leg extension:** {back_angle:.0f}° ({_leg_extension_category(back_angle)})")
+            
+            # Legacy metrics for compatibility
+            if 'knee_bend_min_deg' in shot:
+                legacy_knee = shot['knee_bend_min_deg']
+                analysis_lines.append(f"**knee bend minimum:** {legacy_knee:.0f}°")
+            
+            analysis_lines.append("")  # Blank line between shots
+        
+        return "\n".join(analysis_lines)
+        
+    except Exception as exc:
+        # Fallback to string representation if parsing fails
+        return f"Raw analysis data (parsing error: {exc}):\n{str(raw_analysis)}"
+
+
+def _score_to_category(score: float) -> str:
+    """Convert 0-100 score to readable category."""
+    if score >= 85:
+        return "excellent"
+    elif score >= 70:
+        return "good"
+    elif score >= 50:
+        return "fair"
+    else:
+        return "needs work"
+
+
+def _knee_angle_category(angle: float) -> str:
+    """Convert knee angle to readable category."""
+    if angle <= 100:
+        return "excellent power position"
+    elif angle <= 110:
+        return "good bend"
+    elif angle <= 130:
+        return "moderate bend"
+    else:
+        return "too straight"
+
+
+def _leg_extension_category(angle: float) -> str:
+    """Convert leg extension angle to readable category."""
+    if angle >= 160:
+        return "excellent extension"
+    elif angle >= 140:
+        return "good extension"
+    elif angle >= 120:
+        return "moderate extension"
+    else:
+        return "limited extension"
+
+
 def load_sample_analysis(filepath: str) -> str:
     """Load analysis data from a JSON file for testing."""
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
         
-        # Extract the data_analysis field if it's a full analysis result
+        # Check if this is raw pose analysis data
+        if isinstance(data, dict) and 'shots' in data and 'video' in data:
+            # This is raw pose_extraction_shooting_drills.py output
+            return parse_raw_pose_analysis(data)
+        
+        # Extract the data_analysis field if it's a processed analysis result
         if isinstance(data, dict) and 'analysis' in data:
             return data['analysis'].get('data_analysis', str(data))
         elif isinstance(data, dict) and 'data_analysis' in data:

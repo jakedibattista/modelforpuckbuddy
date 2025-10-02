@@ -38,18 +38,28 @@ Simple overview of how the hockey video analysis system works.
 
 ## How It Works
 
-### Simple Flow (Most Apps)
+### ⚡ Simple/Direct Flow (Recommended for Mobile Apps)
 ```
-Mobile App → Upload Video → Get Analysis → Display Results
-     ↓              ↓             ↓            ↓
-Get Upload URL → PUT Video → POST Analyze → Show Data
+Mobile App → Upload Video → Analyze Video → Display Results
+     ↓              ↓             ↓              ↓
+Get Upload URL → PUT Video → POST /analyze-video → Show Data
 ```
 
 **Timeline:**
 - Upload URL: instant
 - Video upload: 10-30 seconds
-- Analysis: ~2 minutes
-- Total: ~2.5 minutes
+- Analysis: ~2 minutes (processes immediately)
+
+### 🔄 Advanced/Queue Flow (⚠️ DEPRECATED)
+**Note:** This workflow is no longer recommended. It requires a separate worker system that most apps don't need. Use the Simple/Direct flow above instead.
+
+```
+Mobile App → Upload Video → Submit Job → Check Results Later
+     ↓              ↓             ↓              ↓
+Get Upload URL → PUT Video → POST /submit-video → GET /results
+```
+
+**Why deprecated:** The Simple/Direct flow provides the same results in the same time (~2 min) without requiring additional infrastructure.
 
 ### With Coaching
 ```

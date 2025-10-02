@@ -9,6 +9,8 @@ from typing import Dict
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from utils.firebase_storage import FirebaseStorageManager
 from firebase_admin import firestore
@@ -24,6 +26,22 @@ def create_app() -> Flask:
          methods=["GET", "POST", "OPTIONS"],
          allow_headers=["Content-Type", "Authorization"],
          supports_credentials=True)
+
+    # Rate limiting - per user limits to prevent abuse and control costs
+    def get_user_id_from_request():
+        """Extract user_id from request payload for rate limiting."""
+        try:
+            data = request.get_json(silent=True) or {}
+            return data.get('user_id') or get_remote_address()
+        except:
+            return get_remote_address()
+    
+    limiter = Limiter(
+        app=app,
+        key_func=get_user_id_from_request,
+        default_limits=["200 per day", "50 per hour"],  # Global limits
+        storage_uri="memory://"  # Use in-memory storage (simple, no Redis needed)
+    )
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("signed_url_api")
@@ -57,6 +75,7 @@ def create_app() -> Flask:
         }
 
     @app.route("/api/upload-url", methods=["POST"])
+    @limiter.limit("20 per hour")  # Allow more upload URL requests
     def generate_upload_url() -> tuple:
         payload = request.get_json() or {}
         user_id = payload.get("user_id")
@@ -75,6 +94,7 @@ def create_app() -> Flask:
             return jsonify({"error": "Failed to create upload URL"}), 500
 
     @app.route("/api/submit-video", methods=["POST"])
+    @limiter.limit("10 per hour")  # Limit expensive video processing
     def submit_video() -> tuple:
         payload = request.get_json() or {}
         user_id = payload.get("user_id")
@@ -90,29 +110,9 @@ def create_app() -> Flask:
             logger.exception("Failed to create analysis job")
             return jsonify({"error": "Failed to create analysis job"}), 500
 
-    @app.route("/api/download-url", methods=["POST"])
-    def generate_download_url() -> tuple:
-        payload = request.get_json() or {}
-        storage_path = payload.get("storage_path")
-        if not storage_path:
-            return jsonify({"error": "storage_path is required"}), 400
-
-        expiration_hours = int(payload.get("expiration_hours", 24))
-
-        try:
-            url = get_manager().generate_video_download_url(
-                storage_path, expiration_hours=expiration_hours
-            )
-            return jsonify({
-                "success": True,
-                "download_url": url,
-                "expires_in_hours": expiration_hours,
-            })
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Failed to create download URL")
-            return jsonify({"error": "Failed to create download URL"}), 500
 
     @app.route("/api/analyze-video", methods=["POST"])
+    @limiter.limit("10 per hour")  # Limit expensive video processing (main cost driver)
     def analyze_video_simple() -> tuple:
         """Simple endpoint: process video analysis with simplified AI feedback."""
         payload = request.get_json() or {}
@@ -207,9 +207,17 @@ def create_app() -> Flask:
                             
                         if cleanup_count > 0:
                             batch.commit()
-                            logger.info(f"Auto-cleaned {cleanup_count} old completed jobs for user {user_id}")
+                            logger.info(f"Auto-cleaned {cleanup_count} old completed Firestore jobs for user {user_id}")
                     except Exception as cleanup_error:
                         logger.warning(f"Failed to auto-cleanup old jobs: {cleanup_error}")
+                    
+                    # Clean up old storage files (videos and results older than 30 days)
+                    try:
+                        deleted_count = manager.cleanup_old_files(user_id, days_old=30)
+                        if deleted_count > 0:
+                            logger.info(f"Auto-cleaned {deleted_count} old storage files for user {user_id}")
+                    except Exception as storage_cleanup_error:
+                        logger.warning(f"Failed to auto-cleanup old storage files: {storage_cleanup_error}")
                     
                     return jsonify({
                         "success": True,
@@ -242,6 +250,7 @@ def create_app() -> Flask:
         except Exception as exc:
             logger.exception("Failed to analyze video")
             return jsonify({"error": "Failed to analyze video"}), 500
+
 
     @app.route("/api/results/<user_id>", methods=["GET"])
     def list_results(user_id: str):
@@ -371,13 +380,21 @@ def create_app() -> Flask:
             
         payload = request.get_json() or {}
         analysis_data = payload.get("analysis_data")
+        raw_analysis = payload.get("raw_analysis")  # NEW: Accept raw pose analysis
         user_id = payload.get("user_id", "anonymous")
         
-        if not analysis_data:
-            return jsonify({"error": "analysis_data is required"}), 400
+        if not analysis_data and not raw_analysis:
+            return jsonify({"error": "analysis_data or raw_analysis is required"}), 400
         
         try:
             agent = get_openice_agent()
+            
+            # Convert raw analysis to readable format if provided
+            if raw_analysis and not analysis_data:
+                from agents.openice_agent import parse_raw_pose_analysis
+                analysis_data = parse_raw_pose_analysis(raw_analysis)
+                logger.info("Converted raw pose analysis to readable format for OpenIce")
+            
             session_id = agent.create_chat_session(analysis_data, user_id)
             
             # Get an initial response to provide immediate value
@@ -430,125 +447,6 @@ def create_app() -> Flask:
             logger.exception("Failed to process OpenIce chat")
             return jsonify({"error": "Failed to process chat message"}), 500
 
-    # ------------------------------------------------------------------
-    # Job Management and Cleanup Endpoints
-    # ------------------------------------------------------------------
-    
-    @app.route("/api/job/complete", methods=["POST"])
-    def mark_job_complete() -> tuple:
-        """Mark a job as completed and clean it up from the queue."""
-        payload = request.get_json() or {}
-        user_id = payload.get("user_id")
-        job_id = payload.get("job_id")
-        
-        if not user_id:
-            return jsonify({"error": "user_id is required"}), 400
-            
-        try:
-            manager = get_manager()
-            
-            if job_id:
-                # Complete specific job
-                job_ref = manager.db.collection("jobs").document(job_id)
-                job_doc = job_ref.get()
-                
-                if not job_doc.exists:
-                    return jsonify({"error": f"Job {job_id} not found"}), 404
-                    
-                job_data = job_doc.to_dict()
-                if job_data.get("userId") != user_id:
-                    return jsonify({"error": "Access denied"}), 403
-                
-                # Delete the completed job
-                job_ref.delete()
-                logger.info(f"Deleted completed job {job_id} for user {user_id}")
-                
-                return jsonify({
-                    "success": True,
-                    "message": f"Job {job_id} completed and cleaned up",
-                    "job_id": job_id
-                })
-            else:
-                # Complete all completed jobs for this user
-                jobs_ref = (
-                    manager.db.collection("jobs")
-                    .where("userId", "==", user_id)
-                    .where("status", "==", "completed")
-                )
-                
-                deleted_count = 0
-                batch = manager.db.batch()
-                
-                for job_doc in jobs_ref.stream():
-                    batch.delete(job_doc.reference)
-                    deleted_count += 1
-                    
-                if deleted_count > 0:
-                    batch.commit()
-                    logger.info(f"Deleted {deleted_count} completed jobs for user {user_id}")
-                
-                return jsonify({
-                    "success": True,
-                    "message": f"Cleaned up {deleted_count} completed jobs",
-                    "deleted_count": deleted_count
-                })
-                
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Failed to mark job as complete")
-            return jsonify({"error": "Failed to complete job"}), 500
-    
-    @app.route("/api/jobs/cleanup", methods=["POST"])
-    def cleanup_old_jobs() -> tuple:
-        """Clean up old jobs for a user (completed, failed, or stale)."""
-        payload = request.get_json() or {}
-        user_id = payload.get("user_id")
-        max_age_hours = payload.get("max_age_hours", 24)
-        
-        if not user_id:
-            return jsonify({"error": "user_id is required"}), 400
-            
-        try:
-            manager = get_manager()
-            
-            # Calculate cutoff time
-            from datetime import datetime, timedelta
-            cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
-            
-            # Find old jobs (completed, failed, or old queued jobs)
-            old_jobs_ref = (
-                manager.db.collection("jobs")
-                .where("userId", "==", user_id)
-                .where("createdAt", "<", cutoff_time)
-            )
-            
-            deleted_count = 0
-            batch = manager.db.batch()
-            
-            for job_doc in old_jobs_ref.stream():
-                job_data = job_doc.to_dict()
-                status = job_data.get("status")
-                
-                # Only delete completed, failed, or very old queued jobs
-                if status in ["completed", "failed"] or (
-                    status == "queued" and max_age_hours > 1
-                ):
-                    batch.delete(job_doc.reference)
-                    deleted_count += 1
-                    
-            if deleted_count > 0:
-                batch.commit()
-                logger.info(f"Cleaned up {deleted_count} old jobs for user {user_id}")
-            
-            return jsonify({
-                "success": True,
-                "message": f"Cleaned up {deleted_count} old jobs",
-                "deleted_count": deleted_count,
-                "cutoff_hours": max_age_hours
-            })
-            
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Failed to cleanup old jobs")
-            return jsonify({"error": "Failed to cleanup jobs"}), 500
 
     # ------------------------------------------------------------------
     # Coach-Specific Endpoints

@@ -2,6 +2,9 @@
 
 Quick guide to add hockey video analysis to your iOS app.
 
+**🎯 For iOS/Mobile Apps - Use the Simple/Direct Workflow:**
+This guide uses `/api/analyze-video` (not `/api/submit-video`) because it processes immediately and returns complete results (~2 minutes). Perfect for mobile apps!
+
 ## Setup
 
 ### 1. Add Firebase
@@ -43,7 +46,7 @@ class VideoAnalysisService: ObservableObject {
             // Step 2: Upload video
             try await uploadVideo(videoURL, to: uploadInfo.uploadURL)
             
-            // Step 3: Analyze video
+            // Step 3: Analyze video (direct processing - waits ~2 min, returns complete results)
             let analysis = try await requestAnalysis(storagePath: uploadInfo.storagePath)
             
             dataAnalysis = analysis.dataAnalysis
@@ -105,7 +108,7 @@ class VideoAnalysisService: ObservableObject {
             ]
         )
         
-        let response: AnalysisResponse = try await request.send(timeout: 600) // 10 minutes
+        let response: AnalysisResponse = try await request.send(timeout: 600) // 10 minutes (analyze-video takes ~2 min)
         return response.analysis
     }
 }

@@ -4,16 +4,25 @@
 
 ## Quick Start
 
-Most apps need just 3 steps:
-1. **Get upload URL** → 2. **Upload video** → 3. **Get analysis**
+**🎯 Choose Your Workflow:**
 
-Optional: Get coaching feedback from Seth or chat with OpenIce AI.
+### ⚡ **Simple/Direct** (Recommended for Mobile Apps)
+Most apps need just 3 steps:
+1. **Get upload URL** → 2. **Upload video** → 3. **Analyze video** (waits ~2 min, returns results)
+
+**Optional**: Get coaching feedback from Seth or chat with OpenIce AI.
+
+---
+
+### 🔄 **Advanced/Queue** (⚠️ DEPRECATED)
+This workflow requires a separate worker system and is no longer recommended for most use cases. Use the Simple/Direct workflow above instead.
 
 ---
 
 ## Core Video Analysis
 
 ### Step 1: Get Upload URL
+*(Same for both workflows)*
 ```bash
 POST /api/upload-url
 
@@ -35,6 +44,7 @@ POST /api/upload-url
 ```
 
 ### Step 2: Upload Video
+*(Same for both workflows)*
 ```bash
 PUT [upload_url from step 1]
 Content-Type: video/mov
@@ -42,7 +52,12 @@ Content-Type: video/mov
 [video file data]
 ```
 
-### Step 3: Analyze Video
+---
+
+## 🎯 Step 3: Choose Your Analysis Method
+
+### ⚡ Option A: Direct Analysis (Recommended)
+**Use this for mobile apps - processes immediately and returns results**
 ```bash
 POST /api/analyze-video
 
@@ -60,12 +75,38 @@ POST /api/analyze-video
     "data_analysis": "**Shots detected at timestamps:** 00:08, 00:15\n\n**Shot 1: 00:08:**\n**head position:** head excellent (100), eyes focused (68)\n**wrist performance:** excellent extension (82/100)\n**hip drive:** excellent (78/100, 75.3 speed)",
     "shots_detected": 3,
     "video_duration": 25.4,
-    "raw_analysis": "full analysis data for coaching"
+    "video_size_mb": 15.2,
+    "raw_analysis": {
+      "video": "video.mov",
+      "fps": 30,
+      "duration_est_sec": 25.4,
+      "shots": [
+        {
+          "shot_time_sec": 8.2,
+          "head_position": {
+            "head_up_score": 85.2,
+            "eyes_forward_score": 72.1
+          },
+          "wrist_control": {
+            "setup_control_score": 78.5,
+            "setup_control_category": "controlled"
+          },
+          "hip_drive_analysis": {
+            "hip_drive_score": 82.3,
+            "hip_drive_category": "excellent"
+          }
+        }
+      ]
+    }
   }
 }
 ```
 
-**That's it!** Your app now has pose analysis and structured shot data.
+**That's it!** Your app gets:
+- ✅ **Human-readable summary** in `data_analysis` (show this to users)
+- ✅ **Complete technical data** in `raw_analysis` (use for coaching endpoints or advanced features)
+
+---
 
 ---
 
@@ -112,7 +153,9 @@ POST /api/coach/seth
 
 ## Optional: OpenIce AI Chat
 
-### Start Conversation
+**⭐ Recommended Endpoints** (with CORS support and enhanced features):
+
+### Initialize Session
 ```bash
 POST /api/openice/init
 
@@ -122,7 +165,23 @@ POST /api/openice/init
 }
 ```
 
-### Ask Questions
+**OR with raw analysis data:**
+```bash
+POST /api/openice/init
+
+{
+  "user_id": "user123",
+  "raw_analysis": {
+    "video": "video.mov",
+    "shots": [...],
+    "duration_est_sec": 25.4
+  }
+}
+```
+
+**Response:** Includes `session_id` and immediate AI coaching response.
+
+### Continue Conversation
 ```bash
 POST /api/openice/chat
 
@@ -131,6 +190,8 @@ POST /api/openice/chat
   "question": "How can I shoot like Connor McDavid?"
 }
 ```
+
+**Note:** The `/api/openice/*` endpoints are recommended over the legacy `/api/start-chat` and `/api/ask-question` endpoints as they provide immediate responses and better mobile app support.
 
 ---
 
@@ -167,23 +228,29 @@ const analysis = await fetch('YOUR_API_BASE/api/analyze-video', {
 
 ## All Endpoints
 
-| Endpoint | Purpose | Time |
-|----------|---------|------|
-| `/health` | Health check | instant |
-| `/api/upload-url` | Get upload URL | instant |
-| `/api/analyze-video` | Analyze video | 2 min |
-| `/api/submit-video` | Submit job (advanced) | instant |
-| `/api/download-url` | Get download URL | instant |
-| `/api/results/{user_id}` | List user results | instant |
-| `/api/coaches` | List coaches | instant |
-| `/api/coach/seth` | Seth's coaching | 15 sec |
-| `/api/start-chat` | Start OpenIce chat | 5 sec |
-| `/api/ask-question` | Ask OpenIce question | 10 sec |
-| `/api/chat-info/{session_id}` | Get chat info | instant |
-| `/api/openice/init` | Start AI chat (client) | 5 sec |
-| `/api/openice/chat` | Ask AI questions (client) | 10 sec |
-| `/api/job/complete` | Mark job complete | instant |
-| `/api/jobs/cleanup` | Clean up old jobs | instant |
+### Core Endpoints
+| Endpoint | Purpose | Time | Workflow |
+|----------|---------|------|----------|
+| `/health` | Health check | instant | Both |
+| `/api/upload-url` | Get upload URL | instant | Both |
+
+### Analysis Methods
+| Endpoint | Purpose | Time | Workflow |
+|----------|---------|------|----------|
+| `/api/analyze-video` | ⚡ **Direct analysis** (includes raw_analysis) | ~2 min | **Simple/Direct** |
+| `/api/submit-video` | 🔄 Submit to job queue (⚠️ DEPRECATED) | instant | **Advanced/Queue** |
+| `/api/results/{user_id}` | List completed results (⚠️ DEPRECATED) | instant | **Advanced/Queue** |
+
+### Optional Features
+| Endpoint | Purpose | Time | Notes |
+|----------|---------|------|-------|
+| `/api/coaches` | List coaches | instant | |
+| `/api/coach/seth` | Seth's coaching | 15 sec | |
+| `/api/openice/init` | ⭐ Start AI chat | 5 sec | **Recommended** |
+| `/api/openice/chat` | ⭐ Ask AI questions | 10 sec | **Recommended** |
+| `/api/start-chat` | Start OpenIce chat (legacy) | 5 sec | Use `/api/openice/init` |
+| `/api/ask-question` | Ask question (legacy) | 10 sec | Use `/api/openice/chat` |
+| `/api/chat-info/{session_id}` | Get chat info | instant | |
 
 ## Tips
 
