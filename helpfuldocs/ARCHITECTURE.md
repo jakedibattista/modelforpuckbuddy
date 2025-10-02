@@ -38,7 +38,7 @@ Simple overview of how the hockey video analysis system works.
 
 ## How It Works
 
-### ⚡ Simple/Direct Flow (Recommended for Mobile Apps)
+### Video Analysis Flow
 ```
 Mobile App → Upload Video → Analyze Video → Display Results
      ↓              ↓             ↓              ↓
@@ -47,35 +47,27 @@ Get Upload URL → PUT Video → POST /analyze-video → Show Data
 
 **Timeline:**
 - Upload URL: instant
-- Video upload: 10-30 seconds
+- Video upload: 10-30 seconds  
 - Analysis: ~2 minutes (processes immediately)
+- Results: Complete data + human-readable summary
 
-### 🔄 Advanced/Queue Flow (⚠️ DEPRECATED)
-**Note:** This workflow is no longer recommended. It requires a separate worker system that most apps don't need. Use the Simple/Direct flow above instead.
-
+### Optional: Coaching Feedback
 ```
-Mobile App → Upload Video → Submit Job → Check Results Later
-     ↓              ↓             ↓              ↓
-Get Upload URL → PUT Video → POST /submit-video → GET /results
-```
-
-**Why deprecated:** The Simple/Direct flow provides the same results in the same time (~2 min) without requiring additional infrastructure.
-
-### With Coaching
-```
-Get Analysis → Choose Coach → Get Feedback → Show Coaching
-     ↓             ↓             ↓              ↓  
-  Raw Data → POST /coach/seth → Coaching Text → Display
+Get Analysis → Get Coaching → Show Feedback
+     ↓              ↓              ↓  
+  Raw Data → POST /coach/seth → Display Tips
 ```
 
-**Additional time:** +15 seconds for coaching
+**Additional time:** +15 seconds
 
-### With AI Chat
+### Optional: AI Chat
 ```
 Get Analysis → Start Chat → Ask Questions → Get Answers
-     ↓            ↓            ↓              ↓
-  Raw Data → OpenIce Init → Chat Messages → AI Responses  
+     ↓              ↓              ↓              ↓
+  Summary → OpenIce Init → Chat Message → AI Response  
 ```
+
+**Response time:** ~5-10 seconds per message
 
 ---
 
@@ -105,19 +97,24 @@ Raw Video → MediaPipe → Shot Detection → Metrics → Summary
 ## Security & Performance
 
 ### Security
-- **Signed URLs**: Videos uploaded directly to secure cloud storage
+- **Signed URLs**: Videos uploaded directly to secure cloud storage with 1-hour expiration
 - **No Credentials**: Apps never handle storage keys
-- **Automatic Cleanup**: Videos deleted after processing
+- **Firebase Auth Required**: All storage operations require authenticated users
+- **Private Storage**: Users can only access their own files (enforced by Storage Rules)
+- **Automatic Cleanup**: Videos and results older than 30 days deleted automatically
+- **Rate Limiting**: Per-user limits prevent abuse (10 videos/hour, 200 requests/day)
 
 ### Performance  
-- **Auto-scaling**: Handles multiple videos simultaneously
+- **Auto-scaling**: Handles multiple videos simultaneously (up to 10 concurrent)
 - **Efficient Processing**: Optimized for 2-3 minute analysis
-- **Smart Caching**: Reduces redundant processing
+- **Smart Cleanup**: Old files removed to maintain performance
+- **Cost Control**: Rate limits and cleanup prevent runaway costs
 
 ### Reliability
 - **Error Handling**: Graceful failures with helpful messages
-- **Timeout Protection**: Won't hang indefinitely
-- **Health Monitoring**: System status always available
+- **Timeout Protection**: Won't hang indefinitely (10 min max)
+- **Health Monitoring**: System status always available at `/health`
+- **Rate Limit Protection**: Prevents server overload with 429 responses
 
 ---
 

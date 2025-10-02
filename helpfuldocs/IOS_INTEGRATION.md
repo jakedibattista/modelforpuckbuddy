@@ -150,12 +150,14 @@ enum VideoError: LocalizedError {
     case notAuthenticated
     case uploadFailed
     case analysisFailed
+    case rateLimitExceeded
     
     var errorDescription: String? {
         switch self {
         case .notAuthenticated: return "Please sign in first"
         case .uploadFailed: return "Failed to upload video"
         case .analysisFailed: return "Analysis failed"
+        case .rateLimitExceeded: return "You've reached the hourly analysis limit (10 videos/hour). Please try again later!"
         }
     }
 }
@@ -179,8 +181,16 @@ struct APIRequest {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              200...299 ~= httpResponse.statusCode else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw VideoError.analysisFailed
+        }
+        
+        // Handle rate limiting
+        if httpResponse.statusCode == 429 {
+            throw VideoError.rateLimitExceeded
+        }
+        
+        guard 200...299 ~= httpResponse.statusCode else {
             throw VideoError.analysisFailed
         }
         
@@ -318,6 +328,63 @@ struct CoachingResponse: Codable {
 }
 ```
 
+## Rate Limits & Best Practices
+
+### API Rate Limits (Per User)
+The backend enforces the following limits per authenticated user:
+
+| Endpoint | Limit | Purpose |
+|----------|-------|---------|
+| `/api/upload-url` | 20/hour | Upload URL generation |
+| `/api/analyze-video` | **10/hour** | Video analysis (main limit) |
+| All endpoints | 200/day | Total daily usage |
+
+**What happens when limit exceeded:**
+- API returns `429 Too Many Requests`
+- User sees: "You've reached the hourly analysis limit (10 videos/hour). Please try again later!"
+- Automatically handled by the `VideoError.rateLimitExceeded` case
+
+### Best Practices
+
+**1. Show User Feedback:**
+```swift
+// Add to VideoAnalysisService
+@Published var videosAnalyzedToday = 0
+@Published var videosRemainingThisHour = 10
+
+// Update after each analysis
+videosAnalyzedToday += 1
+videosRemainingThisHour = max(0, 10 - videosAnalyzedToday % 10)
+```
+
+**2. Validate Before Upload:**
+```swift
+func canAnalyzeVideo() -> Bool {
+    // Check file size
+    guard videoSize < 100_000_000 else { // 100MB
+        error = "Video too large. Please use a video under 100MB"
+        return false
+    }
+    
+    // Add your own tracking if needed
+    return true
+}
+```
+
+**3. Handle Long Processing Times:**
+```swift
+// Already configured with 10-minute timeout
+let response: AnalysisResponse = try await request.send(timeout: 600)
+```
+
+### Security Notes
+- **Firebase Auth Required**: All API calls require authenticated Firebase users
+- **Private Storage**: Users can only access their own videos and results
+- **Automatic Cleanup**: Videos and results are deleted after 30 days
+- **Signed URLs**: All uploads use secure, time-limited signed URLs
+
+---
+
 ## Tips
 
 - **Video format**: .mov works best
@@ -326,4 +393,4 @@ struct CoachingResponse: Codable {
 - **Timeouts**: Use 10 minutes for video analysis
 - **Testing**: Test with short (10-30 second) hockey videos first
 
-That's it! Your app can now analyze hockey videos and provide feedback to users.
+That's it! Your app can now analyze hockey videos with proper error handling, rate limiting, and security.

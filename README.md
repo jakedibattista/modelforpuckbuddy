@@ -79,31 +79,34 @@ The backend API is deployed to Cloud Run and ready for production use:
 
 **Backend API URL**: `https://puck-buddy-model-22317830094.us-central1.run.app`
 
+### Security & Rate Limits
+
+**🔒 Security:**
+- Firebase Authentication required for all video operations
+- Signed URLs with 1-hour expiration for secure uploads
+- Private storage (users can only access their own files)
+- Automatic cleanup of old files (30 days)
+
+**⏱️ Rate Limits (Per User):**
+- **Video Analysis**: 10 videos/hour (main cost driver)
+- **Upload URLs**: 20 requests/hour
+- **All Endpoints**: 200 requests/day, 50 requests/hour
+- **Response**: HTTP 429 when limit exceeded
+
 ### Available Endpoints:
 
 **Core Video Analysis:**
 - `GET /health` - Service health check
 - `POST /api/upload-url` - Generate signed URL for video upload
-
-**🎯 Two Analysis Workflows:**
-
-**⚡ Simple/Direct (Recommended for Mobile Apps):**
-- `POST /api/analyze-video` - ⭐ **Immediate processing**: Downloads video, runs MediaPipe pose analysis, returns complete results including `raw_analysis` field (~2 minutes)
-
-**🔄 Advanced/Queue-Based (⚠️ DEPRECATED - Worker System Required):**
-- `POST /api/submit-video` - Creates background job, returns job_id immediately
-- `GET /api/results/{user_id}` - List completed analysis results from job queue
-- **Note:** These endpoints require a separate worker system. Most apps should use the Simple/Direct workflow above.
+- `POST /api/analyze-video` - Analyze video with MediaPipe pose detection (~2 minutes)
 
 **Coaching Feedback:**
 - `GET /api/coaches` - List available coaching personalities
 - `POST /api/coach/seth` - Get Seth's technical coaching feedback
 
-**OpenIce AI Coach (Optional):**
-- `POST /api/openice/init` - ⭐ **Recommended**: Initialize OpenIce session with immediate AI response
-- `POST /api/openice/chat` - ⭐ **Recommended**: Send chat messages to OpenIce
-- `POST /api/start-chat` - Legacy: Create conversational coaching session (use `/api/openice/init` instead)
-- `POST /api/ask-question` - Legacy: Ask questions (use `/api/openice/chat` instead)
+**OpenIce AI Coach:**
+- `POST /api/openice/init` - Initialize OpenIce coaching session
+- `POST /api/openice/chat` - Chat with AI coach about technique
 - `GET /api/chat-info/<session_id>` - Get chat session information
 
 
@@ -120,8 +123,7 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload
 
 ## Quick Integration Guide
 
-### ⚡ Simple/Direct Workflow (Recommended for Mobile Apps):
-**Use this if you want immediate results and can wait ~2 minutes**
+**Three simple steps to analyze a hockey video:**
 
 ```bash
 # Step 1: Get upload URL
@@ -129,58 +131,41 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","content_type":"video/mov"}'
 
-# Step 2: Upload video using returned URL, then analyze (waits ~2 min, returns complete results)
+# Step 2: Upload video using returned URL (use PUT with video file)
+
+# Step 3: Analyze video (waits ~2 min, returns complete results)
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyze-video \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","storage_path":"users/test123/..."}'
 
-# Step 3 (Optional): Get coaching feedback  
+# Optional: Get coaching feedback  
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"test123","raw_analysis":"[analysis_data_from_step_2]"}'
+  -d '{"user_id":"test123","raw_analysis":"[analysis_data_from_step_3]"}'
 ```
 
 
-### OpenIce AI Coach Integration (Optional):
+### OpenIce AI Coach (Optional):
 ```bash
-# Initialize OpenIce session (recommended - provides immediate AI response)
+# Initialize AI coaching session
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/openice/init \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","analysis_data":"**Shots detected at timestamps:** 00:08, 00:15..."}'
 
-# Continue conversation with follow-up questions
+# Ask follow-up questions
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/openice/chat \
   -H "Content-Type: application/json" \
   -d '{"session_id":"session-id","question":"What drill should I practice?"}'
 ```
 
-### Coaching Feedback Integration:
-```bash
-# List available coaches
-curl -X GET https://puck-buddy-model-22317830094.us-central1.run.app/api/coaches
-
-# Get Seth's coaching feedback (requires raw_analysis from analyze-video)
-curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":"test123","raw_analysis":{"shots":[{"shot_time_sec":8.2,"knee_bend_min_deg":95}]}}'
-```
-
-
-### Advanced Integration:
-```bash
-# Test complete signed URL workflow  
-cd tests
-python3 test_complete_signed_url_workflow.py "test_user_123" "../videos/input/kidshoot2.MOV"
-```
-
-**📖 Documentation**: See `helpfuldocs/API_GUIDE.md` for complete integration examples including OpenIce.
+**📖 Complete Documentation**: See `helpfuldocs/API_GUIDE.md` for detailed integration guide and examples.
 
 ## Cloud components
-- **Backend API** (`signed_url_api.py`) deployed to Cloud Run provides signed URL endpoints + OpenIce chat endpoints
-- **Worker services** (`worker/app_signed_urls.py`) handle video processing with signed URLs
-- **AI Agents**: data analysis, coaching feedback, and OpenIce conversational coach (Gemini + Google Search)
-- Firebase Functions (2nd gen) in `functions/` can enqueue jobs and clean old data
-- Cloud Run handles video analysis via `analysis.analyze_drill` and agent summaries
+- **Backend API** (`signed_url_api.py`) deployed to Cloud Run - handles video uploads, analysis, and AI coaching
+- **Video Analysis Engine** (`analysis/`) - MediaPipe pose detection for hockey technique analysis
+- **AI Agents** (`agents/`) - Data summary, Seth coaching, and OpenIce conversational coach (Gemini)
+- **Firebase Storage** - Secure video storage with automatic 30-day cleanup
+- **Rate Limiting** - Per-user limits to ensure fair usage (10 videos/hour)
 
 ## Docs
 - See `helpfuldocs/HOCKEY_VIDEO_TESTING_GUIDE.md` for local testing tips.

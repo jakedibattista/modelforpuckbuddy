@@ -4,25 +4,16 @@
 
 ## Quick Start
 
-**🎯 Choose Your Workflow:**
-
-### ⚡ **Simple/Direct** (Recommended for Mobile Apps)
-Most apps need just 3 steps:
+**🎯 Three Simple Steps:**
 1. **Get upload URL** → 2. **Upload video** → 3. **Analyze video** (waits ~2 min, returns results)
 
-**Optional**: Get coaching feedback from Seth or chat with OpenIce AI.
-
----
-
-### 🔄 **Advanced/Queue** (⚠️ DEPRECATED)
-This workflow requires a separate worker system and is no longer recommended for most use cases. Use the Simple/Direct workflow above instead.
+**Optional**: Get coaching feedback or chat with OpenIce AI.
 
 ---
 
 ## Core Video Analysis
 
 ### Step 1: Get Upload URL
-*(Same for both workflows)*
 ```bash
 POST /api/upload-url
 
@@ -44,7 +35,6 @@ POST /api/upload-url
 ```
 
 ### Step 2: Upload Video
-*(Same for both workflows)*
 ```bash
 PUT [upload_url from step 1]
 Content-Type: video/mov
@@ -54,10 +44,9 @@ Content-Type: video/mov
 
 ---
 
-## 🎯 Step 3: Choose Your Analysis Method
+## Step 3: Analyze Video
 
-### ⚡ Option A: Direct Analysis (Recommended)
-**Use this for mobile apps - processes immediately and returns results**
+**Processes immediately and returns complete results in ~2 minutes**
 ```bash
 POST /api/analyze-video
 
@@ -105,8 +94,6 @@ POST /api/analyze-video
 **That's it!** Your app gets:
 - ✅ **Human-readable summary** in `data_analysis` (show this to users)
 - ✅ **Complete technical data** in `raw_analysis` (use for coaching endpoints or advanced features)
-
----
 
 ---
 
@@ -226,31 +213,58 @@ const analysis = await fetch('YOUR_API_BASE/api/analyze-video', {
 
 ---
 
-## All Endpoints
+## All Endpoints Reference
 
-### Core Endpoints
-| Endpoint | Purpose | Time | Workflow |
-|----------|---------|------|----------|
-| `/health` | Health check | instant | Both |
-| `/api/upload-url` | Get upload URL | instant | Both |
+### Core Video Analysis
+| Endpoint | Purpose | Time |
+|----------|---------|------|
+| `GET /health` | Health check | instant |
+| `POST /api/upload-url` | Get upload URL | instant |
+| `POST /api/analyze-video` | Analyze video with MediaPipe | ~2 min |
 
-### Analysis Methods
-| Endpoint | Purpose | Time | Workflow |
-|----------|---------|------|----------|
-| `/api/analyze-video` | ⚡ **Direct analysis** (includes raw_analysis) | ~2 min | **Simple/Direct** |
-| `/api/submit-video` | 🔄 Submit to job queue (⚠️ DEPRECATED) | instant | **Advanced/Queue** |
-| `/api/results/{user_id}` | List completed results (⚠️ DEPRECATED) | instant | **Advanced/Queue** |
+### Coaching & AI
+| Endpoint | Purpose | Time |
+|----------|---------|------|
+| `GET /api/coaches` | List available coaches | instant |
+| `POST /api/coach/seth` | Get Seth's technical coaching | ~15 sec |
+| `POST /api/openice/init` | Start AI coaching chat | ~5 sec |
+| `POST /api/openice/chat` | Ask AI coaching questions | ~10 sec |
+| `GET /api/chat-info/{session_id}` | Get chat session info | instant |
 
-### Optional Features
-| Endpoint | Purpose | Time | Notes |
-|----------|---------|------|-------|
-| `/api/coaches` | List coaches | instant | |
-| `/api/coach/seth` | Seth's coaching | 15 sec | |
-| `/api/openice/init` | ⭐ Start AI chat | 5 sec | **Recommended** |
-| `/api/openice/chat` | ⭐ Ask AI questions | 10 sec | **Recommended** |
-| `/api/start-chat` | Start OpenIce chat (legacy) | 5 sec | Use `/api/openice/init` |
-| `/api/ask-question` | Ask question (legacy) | 10 sec | Use `/api/openice/chat` |
-| `/api/chat-info/{session_id}` | Get chat info | instant | |
+## Rate Limits & Security
+
+### Rate Limits (Per User)
+To ensure fair usage and control costs, the following limits apply per `user_id`:
+
+| Endpoint | Limit | Reset Period |
+|----------|-------|--------------|
+| `/api/upload-url` | 20 requests | Per hour |
+| `/api/analyze-video` | **10 videos** | **Per hour** |
+| All endpoints | 200 requests | Per day |
+
+**When limit exceeded:**
+- Status: `429 Too Many Requests`
+- Response: `{"error": "429 Too Many Requests: 10 per 1 hour"}`
+- Action: Wait until the hour resets, or contact support for higher limits
+
+**iOS Error Handling Example:**
+```swift
+if httpResponse.statusCode == 429 {
+    error = "You've reached the hourly video analysis limit. Please try again in a bit!"
+}
+```
+
+### Storage & Cleanup
+- **Automatic cleanup**: Videos and results older than 30 days are deleted automatically
+- **Job cleanup**: Only last 10 completed jobs per user are retained
+- **No action needed**: Cleanup happens after each analysis
+
+### Security
+- **Authentication required**: Firebase Auth is required for all video operations
+- **Signed URLs**: Videos use time-limited signed URLs (1 hour expiration)
+- **Private storage**: Each user can only access their own files
+
+---
 
 ## Tips
 
@@ -258,3 +272,4 @@ const analysis = await fetch('YOUR_API_BASE/api/analyze-video', {
 - **Keep videos under 100MB** 
 - **Set 10 min timeout** for analysis
 - **Always check** `success: true` in responses
+- **Monitor rate limits**: Track your usage to avoid hitting limits
