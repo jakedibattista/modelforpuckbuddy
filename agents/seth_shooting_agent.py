@@ -61,66 +61,47 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
 
     for s in shots:
         t = float(s.get("shot_time_sec", 0.0))
-        # Use front knee from enhanced analysis instead of general knee
-        lower_body = s.get("lower_body_triangle", {}) or {}
-        front_knee_deg = lower_body.get("front_knee_bend_deg")
+        
+        # NEW DATA FORMAT - Direct access to metrics
+        front_knee_deg = s.get("front_knee_bend_deg")
         front_knee_deg = float(front_knee_deg) if front_knee_deg is not None else 180.0
-        # Keep legacy for comparison but prefer front knee
-        knee_deg = float(s.get("knee_bend_min_deg", 999.0))
-        knee_score = float(s.get("knee_bend_score", 0.0))
-        hip = float(s.get("hip_drive", 0.0))
-        hip_good = bool(s.get("hip_drive_good", False))
-        control = float(s.get("control_smoothness", 0.0))
+        
+        
+        # NEW: Hip rotation power analysis
+        hip_rotation = s.get("hip_rotation_power", {})
+        hip_score = hip_rotation.get("max_rotation_speed", 0.0) if hip_rotation else 0.0
+        hip_good = hip_score >= 25.0  # Threshold for good hip power
+        
+        # NEW: Wrist extension analysis (follow-through)
+        wrist_extension = s.get("wrist_extension", {})
+        follow_through_score = wrist_extension.get("follow_through_score", 0.0)
+        control = follow_through_score / 100.0 if follow_through_score else 0.0
         ctrl_label = "smooth" if control >= 0.6 else ("jerky" if control <= 0.3 else "mixed")
-        # Focus on core body positions only - removed follow-through
         
-        # Enhanced form analysis - handle new 0-100 scale data format
-        head_pos = s.get("head_position", {}) or {}
-        upper_body = s.get("upper_body_square", {}) or {}
-        lower_body = s.get("lower_body_triangle", {}) or {}
+        # NEW: Head position analysis
+        head_pos = s.get("head_position", {})
+        head_up_score = head_pos.get("head_up_score", 0.0)
+        eyes_forward_score = head_pos.get("eyes_forward_score", 0.0)
         
-        # New hip drive analysis (0-100 scale with categories)
-        hip_analysis = s.get("hip_drive_analysis", {})
-        if hip_analysis and hip_analysis.get("hip_drive_score") is not None:
-            hip_score = hip_analysis["hip_drive_score"]
-            hip_category = hip_analysis.get("hip_drive_category", "unknown")
-            # Convert 0-100 scale to legacy 0-1 scale for compatibility
-            hip = hip_score / 100.0
-            hip_good = hip_score >= 60.0  # Good threshold for new scale
-        
-        # New wrist control analysis
-        wrist_control = s.get("wrist_control", {})
-        if wrist_control and wrist_control.get("setup_control_score") is not None:
-            wrist_score = wrist_control["setup_control_score"]
-            wrist_category = wrist_control.get("setup_control_category", "unknown")
-            # Convert 0-100 scale to legacy 0-1 scale for compatibility
-            control = wrist_score / 100.0
-        
-        # Analyze head position (new 0-100 scale)
-        head_metrics = [
-            head_pos.get("head_up_score"),
-            head_pos.get("eyes_forward_score")
-        ]
+        # Calculate average head position (0-100 scale)
+        head_metrics = [head_up_score, eyes_forward_score]
         valid_head = [m for m in head_metrics if m is not None and m > 0.0]
-        avg_head = float(sum(valid_head)) / len(valid_head) / 100.0 if valid_head else 0.0  # Convert to 0-1 scale
+        avg_head = float(sum(valid_head)) / len(valid_head) / 100.0 if valid_head else 0.0
         
-        # Analyze upper body square (average of available metrics)  
-        upper_metrics = [
-            upper_body.get("shoulder_level"),
-            upper_body.get("arm_extension"),
-            upper_body.get("target_alignment")
-        ]
-        valid_upper = [m for m in upper_metrics if m is not None]
-        avg_upper = float(sum(valid_upper)) / len(valid_upper) if valid_upper else 0.0
+        # NEW: Back leg drive analysis
+        back_leg_drive = s.get("back_leg_drive", {})
+        back_leg_extension = back_leg_drive.get("max_extension", 0.0)
+        back_leg_deg = 180.0 - (back_leg_extension / 10.0) if back_leg_extension > 0 else 180.0  # Rough conversion
         
-        # Back leg extension analysis  
-        back_leg_deg = lower_body.get("back_leg_extension_deg")
-        # front_knee_deg already handled above
+        # NEW: Body stability analysis
+        body_stability = s.get("body_stability", {})
+        stability_score = body_stability.get("stability_score", 0.0)
+        avg_upper = stability_score  # Use stability as upper body metric
 
         if hip_good:
             hip_good_times.append(t)
         else:
-            if hip < 0.3:
+            if hip_score < 25.0:  # Use hip_score instead of hip
                 hip_weak_times.append(t)
 
         # Use front knee for more specific feedback (lower is better for front knee)
@@ -160,7 +141,7 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
             times_str = f"at {format_timestamp(hip_good_times[0])} and {format_timestamp(hip_good_times[1])}"
         else:
             times_str = f"at {format_timestamp(hip_good_times[0])}"
-        ww.append(f"Nice hip drive {times_str} - you're really driving through the puck")
+        ww.append(f"Nice hip rotation power {times_str} - you're really driving through the puck")
     
     if knee_good_times:
         best = min(knee_good_times, key=lambda x: x[1])
@@ -171,7 +152,7 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
             times_str = f"at {format_timestamp(steady_times[0])} and {format_timestamp(steady_times[1])}"
         else:
             times_str = f"at {format_timestamp(steady_times[0])}"
-        ww.append(f"Really smooth setup {times_str} - tempo looked solid")
+        ww.append(f"Really smooth follow-through {times_str} - wrist extension looked solid")
     
     if excellent_head_times:
         time_ref = format_timestamp(excellent_head_times[0])
@@ -179,7 +160,7 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
     
     if excellent_upper_times:
         time_ref = format_timestamp(excellent_upper_times[0])
-        ww.append(f"Upper body looked dialed in at {time_ref} - nice square shoulders")
+        ww.append(f"Body stability was dialed in at {time_ref} - nice controlled movement")
     
     if good_back_leg_times:
         time_ref = format_timestamp(good_back_leg_times[0])
@@ -199,11 +180,11 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
             times_str = f"at {format_timestamp(hip_weak_times[0])} and {format_timestamp(hip_weak_times[1])}"
         else:
             times_str = f"at {format_timestamp(hip_weak_times[0])}"
-        wt.append(f"Drive those hips harder {times_str} - really push through the puck")
+        wt.append(f"Drive those hips harder {times_str} - really rotate through the puck")
     
     if jerky_times:
         time_ref = format_timestamp(jerky_times[0])
-        wt.append(f"Setup looked a bit rushed at {time_ref} - take your time and be smooth")
+        wt.append(f"Follow-through looked a bit rushed at {time_ref} - extend those arms smoothly")
     
     if bent_back_leg_times:
         worst = min(bent_back_leg_times, key=lambda x: x[1])
@@ -215,7 +196,7 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
     
     if poor_upper_times:
         time_ref = format_timestamp(poor_upper_times[0])
-        wt.append(f"Square up those shoulders at {time_ref} - both arms extending through")
+        wt.append(f"Stay more stable at {time_ref} - keep that core tight and controlled")
     
     if not wt:
         wt.append("Keep grinding - consistency is key to building muscle memory")

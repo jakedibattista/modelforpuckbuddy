@@ -393,63 +393,250 @@ def _calculate_wrist_extension_metrics(pose_series: Dict[str, List[Optional[Tupl
     
     return wrist_metrics
 
-def _calculate_lower_body_triangle_metrics(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]], 
-                                          front_leg: str, back_leg: str) -> List[Dict]:
-    """Calculate lower body 'triangle' formation metrics for each frame."""
-    front_hip = pose_series.get(f'{front_leg}_HIP', [])
-    front_knee = pose_series.get(f'{front_leg}_KNEE', [])
-    front_ankle = pose_series.get(f'{front_leg}_ANKLE', [])
-    front_heel = pose_series.get(f'{front_leg}_HEEL', [])
+def _calculate_hip_rotation_power(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]], 
+                                 shot_window_slice: slice) -> Dict:
+    """Calculate hip rotation power during shot window."""
+    left_hip = pose_series.get('LEFT_HIP', [])[shot_window_slice]
+    right_hip = pose_series.get('RIGHT_HIP', [])[shot_window_slice]
     
-    back_hip = pose_series.get(f'{back_leg}_HIP', [])
-    back_knee = pose_series.get(f'{back_leg}_KNEE', [])
-    back_ankle = pose_series.get(f'{back_leg}_ANKLE', [])
-    back_heel = pose_series.get(f'{back_leg}_HEEL', [])
+    # Calculate hip center and rotation angles
+    hip_centers = []
+    hip_angles = []
     
-    left_foot = pose_series.get('LEFT_FOOT_INDEX', [])
-    right_foot = pose_series.get('RIGHT_FOOT_INDEX', [])
+    for i in range(len(left_hip)):
+        if left_hip[i] and right_hip[i] and left_hip[i][2] > 0.5 and right_hip[i][2] > 0.5:
+            center_x = (left_hip[i][0] + right_hip[i][0]) / 2
+            center_y = (left_hip[i][1] + right_hip[i][1]) / 2
+            hip_centers.append((center_x, center_y))
+            
+            # Calculate angle between left and right hip
+            angle = _angle_deg((0, 0), (left_hip[i][0], left_hip[i][1]), (right_hip[i][0], right_hip[i][1]))
+            hip_angles.append(angle)
+        else:
+            hip_centers.append(None)
+            hip_angles.append(None)
     
-    lower_body_metrics = []
-    
-    for i in range(max(len(front_hip), len(back_hip))):
-        metrics = {
-            'front_knee_bend': None,
-            'back_leg_extension': None,
-            'stance_width': None
+    # Calculate rotation metrics
+    valid_angles = [a for a in hip_angles if a is not None]
+    if len(valid_angles) < 2:
+        return {
+            'max_rotation_speed': 0.0,
+            'rotation_angle_change': 0.0,
+            'rotation_consistency': 0.0
         }
-        
-        fh = front_hip[i] if i < len(front_hip) else None
-        fk = front_knee[i] if i < len(front_knee) else None
-        fa = front_ankle[i] if i < len(front_ankle) else None
-        
-        bh = back_hip[i] if i < len(back_hip) else None
-        bk = back_knee[i] if i < len(back_knee) else None
-        ba = back_ankle[i] if i < len(back_ankle) else None
-        
-        lf = left_foot[i] if i < len(left_foot) else None
-        rf = right_foot[i] if i < len(right_foot) else None
-        
-        # Front knee bend
-        if fh and fk and fa and min(fh[2], fk[2], fa[2]) > 0.5:
-            front_angle = _angle_deg((fh[0], fh[1]), (fk[0], fk[1]), (fa[0], fa[1]))
-            metrics['front_knee_bend'] = front_angle
-        
-        # Back leg extension
-        if bh and bk and ba and min(bh[2], bk[2], ba[2]) > 0.5:
-            back_angle = _angle_deg((bh[0], bh[1]), (bk[0], bk[1]), (ba[0], ba[1]))
-            metrics['back_leg_extension'] = back_angle
-        
-        # Stance width (distance between feet relative to hip width)
-        if lf and rf and lf[2] > 0.5 and rf[2] > 0.5:
-            foot_distance = np.hypot(lf[0] - rf[0], lf[1] - rf[1])
-            if fh and bh and fh[2] > 0.5 and bh[2] > 0.5:
-                hip_width = np.hypot(fh[0] - bh[0], fh[1] - bh[1])
-                stance_ratio = foot_distance / (hip_width + 1e-6)
-                metrics['stance_width'] = float(np.clip(stance_ratio, 0.0, 3.0))
-        
-        lower_body_metrics.append(metrics)
     
-    return lower_body_metrics
+    # Calculate rotation speed
+    rotation_speeds = []
+    for i in range(1, len(valid_angles)):
+        speed = abs(valid_angles[i] - valid_angles[i-1])
+        rotation_speeds.append(speed)
+    
+    max_rotation_speed = float(np.max(rotation_speeds)) if rotation_speeds else 0.0
+    rotation_angle_change = abs(valid_angles[-1] - valid_angles[0])
+    rotation_consistency = 1.0 - (np.std(rotation_speeds) / (np.mean(rotation_speeds) + 1e-6))
+    
+    return {
+        'max_rotation_speed': max_rotation_speed,
+        'rotation_angle_change': rotation_angle_change,
+        'rotation_consistency': float(np.clip(rotation_consistency, 0.0, 1.0))
+    }
+
+def _calculate_weight_transfer(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]], 
+                             shot_window_slice: slice) -> Dict:
+    """Calculate weight transfer from back to front leg during shot."""
+    left_ankle = pose_series.get('LEFT_ANKLE', [])[shot_window_slice]
+    right_ankle = pose_series.get('RIGHT_ANKLE', [])[shot_window_slice]
+    left_hip = pose_series.get('LEFT_HIP', [])[shot_window_slice]
+    right_hip = pose_series.get('RIGHT_HIP', [])[shot_window_slice]
+    
+    # Calculate center of mass movement
+    com_x = []
+    for i in range(len(left_hip)):
+        if (left_hip[i] and right_hip[i] and left_ankle[i] and right_ankle[i] and
+            all(p[2] > 0.5 for p in [left_hip[i], right_hip[i], left_ankle[i], right_ankle[i]])):
+            
+            # Calculate hip center
+            hip_center = ((left_hip[i][0] + right_hip[i][0]) / 2, (left_hip[i][1] + right_hip[i][1]) / 2)
+            
+            # Calculate distances to each ankle
+            left_dist = np.hypot(hip_center[0] - left_ankle[i][0], hip_center[1] - left_ankle[i][1])
+            right_dist = np.hypot(hip_center[0] - right_ankle[i][0], hip_center[1] - right_ankle[i][1])
+            
+            # Weight distribution (closer to right foot = more weight on left)
+            total_dist = left_dist + right_dist
+            if total_dist > 0:
+                weight_left = right_dist / total_dist
+                com_x.append(weight_left)
+            else:
+                com_x.append(0.5)  # Equal weight
+        else:
+            com_x.append(0.5)  # Default to equal weight
+    
+    if len(com_x) < 2:
+        return {
+            'max_transfer_speed': 0.0,
+            'weight_shift_distance': 0.0,
+            'transfer_timing': 0
+        }
+    
+    # Calculate weight transfer metrics
+    weight_transfer_speeds = np.diff(com_x)
+    max_transfer_speed = float(np.max(np.abs(weight_transfer_speeds)))
+    weight_shift_distance = abs(com_x[-1] - com_x[0])
+    transfer_timing = len(com_x)
+    
+    return {
+        'max_transfer_speed': max_transfer_speed,
+        'weight_shift_distance': weight_shift_distance,
+        'transfer_timing': transfer_timing
+    }
+
+def _calculate_torso_rotation(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]], 
+                            shot_window_slice: slice) -> Dict:
+    """Calculate torso rotation during shot."""
+    left_shoulder = pose_series.get('LEFT_SHOULDER', [])[shot_window_slice]
+    right_shoulder = pose_series.get('RIGHT_SHOULDER', [])[shot_window_slice]
+    left_hip = pose_series.get('LEFT_HIP', [])[shot_window_slice]
+    right_hip = pose_series.get('RIGHT_HIP', [])[shot_window_slice]
+    
+    # Calculate shoulder and hip angles
+    shoulder_angles = []
+    hip_angles = []
+    
+    for i in range(len(left_shoulder)):
+        if (left_shoulder[i] and right_shoulder[i] and left_hip[i] and right_hip[i] and
+            all(p[2] > 0.5 for p in [left_shoulder[i], right_shoulder[i], left_hip[i], right_hip[i]])):
+            
+            # Calculate angles
+            shoulder_angle = _angle_deg((0, 0), (left_shoulder[i][0], left_shoulder[i][1]), 
+                                      (right_shoulder[i][0], right_shoulder[i][1]))
+            hip_angle = _angle_deg((0, 0), (left_hip[i][0], left_hip[i][1]), 
+                                 (right_hip[i][0], right_hip[i][1]))
+            
+            shoulder_angles.append(shoulder_angle)
+            hip_angles.append(hip_angle)
+        else:
+            shoulder_angles.append(None)
+            hip_angles.append(None)
+    
+    # Calculate rotation metrics
+    valid_shoulder = [a for a in shoulder_angles if a is not None]
+    valid_hip = [a for a in hip_angles if a is not None]
+    
+    if len(valid_shoulder) < 2 or len(valid_hip) < 2:
+        return {
+            'shoulder_rotation': 0.0,
+            'hip_rotation': 0.0,
+            'torso_rotation': 0.0,
+            'rotation_sync': 0.0
+        }
+    
+    shoulder_rotation = abs(valid_shoulder[-1] - valid_shoulder[0])
+    hip_rotation = abs(valid_hip[-1] - valid_hip[0])
+    torso_rotation = shoulder_rotation - hip_rotation
+    
+    # Calculate rotation sync (how well shoulders and hips rotate together)
+    rotation_diff = abs(shoulder_rotation - hip_rotation)
+    max_rotation = max(shoulder_rotation, hip_rotation)
+    rotation_sync = 1.0 - (rotation_diff / (max_rotation + 1e-6))
+    
+    return {
+        'shoulder_rotation': shoulder_rotation,
+        'hip_rotation': hip_rotation,
+        'torso_rotation': torso_rotation,
+        'rotation_sync': float(np.clip(rotation_sync, 0.0, 1.0))
+    }
+
+def _calculate_back_leg_drive(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]], 
+                             shot_window_slice: slice, shooting_side: str) -> Dict:
+    """Calculate back leg drive using extension distance and speed."""
+    left_hip = pose_series.get('LEFT_HIP', [])[shot_window_slice]
+    right_hip = pose_series.get('RIGHT_HIP', [])[shot_window_slice]
+    left_ankle = pose_series.get('LEFT_ANKLE', [])[shot_window_slice]
+    right_ankle = pose_series.get('RIGHT_ANKLE', [])[shot_window_slice]
+    
+    # Determine back leg based on shooting side
+    if shooting_side == 'RIGHT':
+        back_hip, back_ankle = right_hip, right_ankle
+    else:
+        back_hip, back_ankle = left_hip, left_ankle
+    
+    # Calculate back leg extension
+    back_leg_extensions = []
+    for i in range(len(back_hip)):
+        if back_hip[i] and back_ankle[i] and back_hip[i][2] > 0.5 and back_ankle[i][2] > 0.5:
+            extension = np.hypot(back_hip[i][0] - back_ankle[i][0], back_hip[i][1] - back_ankle[i][1])
+            back_leg_extensions.append(extension)
+        else:
+            back_leg_extensions.append(None)
+    
+    valid_extensions = [e for e in back_leg_extensions if e is not None]
+    if len(valid_extensions) < 2:
+        return {
+            'extension_change': 0.0,
+            'max_extension': 0.0,
+            'extension_speed': 0.0,
+            'drive_consistency': 0.0
+        }
+    
+    # Calculate drive metrics
+    extension_change = valid_extensions[-1] - valid_extensions[0]
+    max_extension = float(np.max(valid_extensions))
+    extension_speeds = np.diff(valid_extensions)
+    max_extension_speed = float(np.max(np.abs(extension_speeds)))
+    drive_consistency = 1.0 - (np.std(extension_speeds) / (np.mean(extension_speeds) + 1e-6))
+    
+    return {
+        'extension_change': extension_change,
+        'max_extension': max_extension,
+        'extension_speed': max_extension_speed,
+        'drive_consistency': float(np.clip(drive_consistency, 0.0, 1.0))
+    }
+
+def _calculate_body_stability(pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]], 
+                            shot_window_slice: slice) -> Dict:
+    """Calculate body stability during shot."""
+    left_hip = pose_series.get('LEFT_HIP', [])[shot_window_slice]
+    right_hip = pose_series.get('RIGHT_HIP', [])[shot_window_slice]
+    
+    # Calculate hip center movement
+    hip_centers = []
+    for i in range(len(left_hip)):
+        if left_hip[i] and right_hip[i] and left_hip[i][2] > 0.5 and right_hip[i][2] > 0.5:
+            center_x = (left_hip[i][0] + right_hip[i][0]) / 2
+            center_y = (left_hip[i][1] + right_hip[i][1]) / 2
+            hip_centers.append((center_x, center_y))
+        else:
+            hip_centers.append(None)
+    
+    valid_centers = [c for c in hip_centers if c is not None]
+    if len(valid_centers) < 2:
+        return {
+            'stability_score': 0.0,
+            'max_movement': 0.0,
+            'movement_consistency': 0.0
+        }
+    
+    # Calculate center of mass movement
+    com_movements = []
+    for i in range(1, len(valid_centers)):
+        movement = np.hypot(valid_centers[i][0] - valid_centers[i-1][0], 
+                           valid_centers[i][1] - valid_centers[i-1][1])
+        com_movements.append(movement)
+    
+    max_movement = float(np.max(com_movements))
+    mean_movement = float(np.mean(com_movements))
+    std_movement = float(np.std(com_movements))
+    
+    # Stability score: lower movement = higher stability
+    stability_score = 1.0 - (std_movement / (mean_movement + 1e-6))
+    movement_consistency = 1.0 - (std_movement / (mean_movement + 1e-6))
+    
+    return {
+        'stability_score': float(np.clip(stability_score, 0.0, 1.0)),
+        'max_movement': max_movement,
+        'movement_consistency': float(np.clip(movement_consistency, 0.0, 1.0))
+    }
 
 
 # -------------------------------
@@ -607,20 +794,19 @@ def _extract_pose_features(video_path: str, stride: int = 2) -> Tuple:
     front_leg, back_leg = _determine_front_back_legs(shooting_side, pose_series)
     head_metrics = _calculate_head_position_metrics(pose_series)
     wrist_extension_metrics = _calculate_wrist_extension_metrics(pose_series)
-    lower_body_metrics = _calculate_lower_body_triangle_metrics(pose_series, front_leg, back_leg)
     
     return (times, pose_series, fps, total_frames, duration_sec, knees, wrist_vx, 
             wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y,
-            shooting_side, front_leg, back_leg, head_metrics, wrist_extension_metrics, lower_body_metrics)
+            shooting_side, front_leg, back_leg, head_metrics, wrist_extension_metrics)
 
 
 def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees: List[Optional[float]], 
                               wrist_vx: np.ndarray, wrist_speed: np.ndarray, dominant_valid: np.ndarray,
                               hip_vx: np.ndarray, active_wrist_y: List[Optional[float]], 
                               active_shoulder_y: List[Optional[float]], torso_height: List[Optional[float]],
+                              pose_series: Dict[str, List[Optional[Tuple[float, float, float]]]],
                               shooting_side: str, front_leg: str, back_leg: str,
-                              head_metrics: List[Dict], wrist_extension_metrics: List[Dict], 
-                              lower_body_metrics: List[Dict]) -> List[Dict]:
+                              head_metrics: List[Dict], wrist_extension_metrics: List[Dict]) -> List[Dict]:
     """Detect shot peaks and analyze each shot's metrics.
     
     Args:
@@ -786,19 +972,19 @@ def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees
             control_smoothness = 0.0
             wrist_control_score = 0.0
             wrist_control_category = "no_setup_detected"
-        # Focus on core body positions at point of release only
         # Enhanced form analysis for shot window
-        # 
-        # WRIST EXTENSION TIMING:
-        # Unlike setup control (measured BEFORE shot), wrist extension is measured
-        # during the SHOT WINDOW itself (the moment of release + immediate follow-through)
-        # This captures how well the arms extend toward the target during/after release
         shot_window_slice = slice(shot_idx[0], min(len(times), shot_idx[1]+1))
+        
+        # Calculate new enhanced metrics
+        hip_rotation_power = _calculate_hip_rotation_power(pose_series, shot_window_slice)
+        weight_transfer = _calculate_weight_transfer(pose_series, shot_window_slice)
+        torso_rotation = _calculate_torso_rotation(pose_series, shot_window_slice)
+        back_leg_drive = _calculate_back_leg_drive(pose_series, shot_window_slice, shooting_side)
+        body_stability = _calculate_body_stability(pose_series, shot_window_slice)
         
         # Average form metrics during shot window
         shot_head_metrics = head_metrics[shot_window_slice]
         shot_wrist_metrics = wrist_extension_metrics[shot_window_slice]
-        shot_lower_metrics = lower_body_metrics[shot_window_slice]
         
         # Calculate averages for valid frames (ignore None/0.0 values)
         def safe_average(metrics_list: List[Dict], key: str) -> Optional[float]:
@@ -812,14 +998,11 @@ def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees
         # Wrist extension metrics (0-100 scale)
         left_wrist_extension = safe_average(shot_wrist_metrics, 'left_wrist_extension_score')
         right_wrist_extension = safe_average(shot_wrist_metrics, 'right_wrist_extension_score')
-        wrist_alignment = safe_average(shot_wrist_metrics, 'both_wrists_aligned_score')
         follow_through_score = safe_average(shot_wrist_metrics, 'follow_through_score')
         
-        # Lower body triangle metrics  
-        front_knee_angles = [m['front_knee_bend'] for m in shot_lower_metrics if m['front_knee_bend'] is not None]
-        back_leg_angles = [m['back_leg_extension'] for m in shot_lower_metrics if m['back_leg_extension'] is not None]
+        # Front knee bend (keep this - it's essential)
+        front_knee_angles = [k for k in knee_angles_shot if k is not None]
         front_knee_bend_deg = float(np.mean(front_knee_angles)) if front_knee_angles else None
-        back_leg_extension_deg = float(np.mean(back_leg_angles)) if back_leg_angles else None
         
         # Times
         def idx_to_time(i: int) -> float:
@@ -829,37 +1012,51 @@ def _detect_and_analyze_shots(times: List[float], fps: float, stride: int, knees
         shot_t    = (idx_to_time(shot_idx[0]), idx_to_time(shot_idx[1]))
         shot_events.append({
             "shot_time_sec": round(shot_time, 3),
-            # Keep legacy metrics for compatibility (agents still use)
-            "knee_bend_min_deg": round(knee_bend_min, 1),
-            "knee_bend_score": round(knee_bend_score, 3),
-            "hip_drive": round(hip_drive_norm, 3),
-            "hip_drive_good": hip_drive_good,
-            "control_smoothness": round(control_smoothness, 3),
             
-            # NEW: Human-readable metrics (0-100 scores with clear meaning)
+            # Core power metrics
+            "front_knee_bend_deg": round(front_knee_bend_deg, 1) if front_knee_bend_deg is not None else None,
+            "front_knee_score": round(knee_bend_score, 3),
+            
+            # Enhanced power metrics
+            "hip_rotation_power": {
+                "max_rotation_speed": round(hip_rotation_power['max_rotation_speed'], 1),
+                "rotation_angle_change": round(hip_rotation_power['rotation_angle_change'], 1),
+                "rotation_consistency": round(hip_rotation_power['rotation_consistency'], 3)
+            },
+            "weight_transfer": {
+                "max_transfer_speed": round(weight_transfer['max_transfer_speed'], 3),
+                "weight_shift_distance": round(weight_transfer['weight_shift_distance'], 3),
+                "transfer_timing": weight_transfer['transfer_timing']
+            },
+            "torso_rotation": {
+                "shoulder_rotation": round(torso_rotation['shoulder_rotation'], 1),
+                "hip_rotation": round(torso_rotation['hip_rotation'], 1),
+                "torso_rotation": round(torso_rotation['torso_rotation'], 1),
+                "rotation_sync": round(torso_rotation['rotation_sync'], 3)
+            },
+            "back_leg_drive": {
+                "extension_change": round(back_leg_drive['extension_change'], 1),
+                "max_extension": round(back_leg_drive['max_extension'], 1),
+                "extension_speed": round(back_leg_drive['extension_speed'], 1),
+                "drive_consistency": round(back_leg_drive['drive_consistency'], 3)
+            },
+            
+            # Form metrics
+            "wrist_extension": {
+                "left_wrist_extension_score": round(left_wrist_extension, 1) if left_wrist_extension is not None else None,
+                "right_wrist_extension_score": round(right_wrist_extension, 1) if right_wrist_extension is not None else None,
+                "follow_through_score": round(follow_through_score, 1) if follow_through_score is not None else None
+            },
             "head_position": {
                 "head_up_score": round(head_up_score, 1) if head_up_score is not None else None,
                 "eyes_forward_score": round(eyes_forward_score, 1) if eyes_forward_score is not None else None
             },
-            "wrist_control": {
-                "setup_control_score": round(wrist_control_score, 1) if 'wrist_control_score' in locals() else None,
-                "setup_control_category": wrist_control_category if 'wrist_control_category' in locals() else None
+            "body_stability": {
+                "stability_score": round(body_stability['stability_score'], 3),
+                "max_movement": round(body_stability['max_movement'], 1),
+                "movement_consistency": round(body_stability['movement_consistency'], 3)
             },
-            "wrist_extension": {
-                "left_wrist_extension_score": round(left_wrist_extension, 1) if left_wrist_extension is not None else None,
-                "right_wrist_extension_score": round(right_wrist_extension, 1) if right_wrist_extension is not None else None,
-                "both_wrists_aligned_score": round(wrist_alignment, 1) if wrist_alignment is not None else None,
-                "follow_through_score": round(follow_through_score, 1) if follow_through_score is not None else None
-            },
-            "hip_drive_analysis": {
-                "hip_drive_score": round(hip_drive_score, 1) if 'hip_drive_score' in locals() else None,
-                "hip_drive_category": hip_drive_category if 'hip_drive_category' in locals() else None,
-                "peak_forward_speed": round(hip_drive_peak, 1) if 'hip_drive_peak' in locals() else None
-            },
-            "lower_body_triangle": {
-                "front_knee_bend_deg": round(front_knee_bend_deg, 1) if front_knee_bend_deg is not None else None,
-                "back_leg_extension_deg": round(back_leg_extension_deg, 1) if back_leg_extension_deg is not None else None
-            }
+            
         })
     return shot_events
 
@@ -876,21 +1073,11 @@ def _format_analysis_results(video_path: str, fps: float, duration_sec: float, s
     Returns:
         Final formatted results dictionary
     """
-    # Legacy top-level (first shot) for backward compatibility
-    first = shot_events[0] if shot_events else None
     return {
         "video": Path(video_path).name,
         "fps": fps,
         "duration_est_sec": duration_sec,
         "shots": shot_events,
-        "phases": {},  # Removed - not used by agents
-        "metrics": (first and {
-            "knee_bend_min_deg": first["knee_bend_min_deg"],
-            "knee_bend_score": first.get("knee_bend_score", 0.0),
-            "hip_drive": first["hip_drive"],
-            "hip_drive_good": first.get("hip_drive_good", False),
-            "control_smoothness": first["control_smoothness"],
-        }) or {},
     }
 
 
@@ -916,13 +1103,13 @@ def analyze_drill(video_path: str) -> Dict:
     stride = 2
     (times, pose_series, fps, total_frames, duration_sec, knees, wrist_vx, 
      wrist_speed, dominant_valid, hip_vx, torso_height, active_wrist_y, active_shoulder_y,
-     shooting_side, front_leg, back_leg, head_metrics, wrist_extension_metrics, lower_body_metrics) = _extract_pose_features(use_path, stride)
+     shooting_side, front_leg, back_leg, head_metrics, wrist_extension_metrics) = _extract_pose_features(use_path, stride)
 
     # Detect and analyze shots
     shot_events = _detect_and_analyze_shots(
         times, fps, stride, knees, wrist_vx, wrist_speed, dominant_valid, 
-        hip_vx, active_wrist_y, active_shoulder_y, torso_height,
-        shooting_side, front_leg, back_leg, head_metrics, wrist_extension_metrics, lower_body_metrics
+        hip_vx, active_wrist_y, active_shoulder_y, torso_height, pose_series,
+        shooting_side, front_leg, back_leg, head_metrics, wrist_extension_metrics
     )
 
     # Format final results

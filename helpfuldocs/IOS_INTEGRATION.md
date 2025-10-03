@@ -94,7 +94,7 @@ class VideoAnalysisService: ObservableObject {
         }
     }
     
-    private func requestAnalysis(storagePath: String) async throws -> AnalysisResult {
+    private func requestAnalysis(storagePath: String, ageGroup: String = "16+") async throws -> AnalysisResult {
         guard let user = Auth.auth().currentUser else {
             throw VideoError.notAuthenticated
         }
@@ -104,7 +104,8 @@ class VideoAnalysisService: ObservableObject {
             method: "POST",
             body: [
                 "user_id": user.uid,
-                "storage_path": storagePath
+                "storage_path": storagePath,
+                "age_group": ageGroup  // Optional: "7-9", "10-12", "13-16", "16+" (default: "16+")
             ]
         )
         

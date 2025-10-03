@@ -1,0 +1,258 @@
+{
+  "video": "kidshoot1.MOV",
+  "fps": 30.0,
+  "duration_est_sec": 33.63333333333333,
+  "shots": [
+    {
+      "shot_time_sec": 2.8,
+      "front_knee_bend_deg": 102.0,
+      "front_knee_score": 1.0,
+      "hip_rotation_power": {
+        "max_rotation_speed": 13.7,
+        "rotation_angle_change": 14.4,
+        "rotation_consistency": 0.15
+      },
+      "weight_transfer": {
+        "max_transfer_speed": 0.002,
+        "weight_shift_distance": 0.003,
+        "transfer_timing": 4
+      },
+      "torso_rotation": {
+        "shoulder_rotation": 56.6,
+        "hip_rotation": 14.4,
+        "torso_rotation": 42.2,
+        "rotation_sync": 0.255
+      },
+      "back_leg_drive": {
+        "extension_change": 10.1,
+        "max_extension": 227.4,
+        "extension_speed": 6.5,
+        "drive_consistency": 0.0
+      },
+      "wrist_extension": {
+        "left_wrist_extension_score": 85.8,
+        "right_wrist_extension_score": 81.3,
+        "follow_through_score": 81.8
+      },
+      "head_position": {
+        "head_up_score": 100.0,
+        "eyes_forward_score": 68.2
+      },
+      "body_stability": {
+        "stability_score": 0.799,
+        "max_movement": 11.0,
+        "movement_consistency": 0.799
+      },
+      "legacy_metrics": {
+        "knee_bend_min_deg": 96.0,
+        "knee_bend_score": 1.0,
+        "hip_drive": 0.784,
+        "hip_drive_good": true,
+        "control_smoothness": 0.0
+      },
+      "age": 12
+    },
+    {
+      "shot_time_sec": 10.2,
+      "front_knee_bend_deg": 110.5,
+      "front_knee_score": 0.765,
+      "hip_rotation_power": {
+        "max_rotation_speed": 65.5,
+        "rotation_angle_change": 67.3,
+        "rotation_consistency": 0.009
+      },
+      "weight_transfer": {
+        "max_transfer_speed": 0.01,
+        "weight_shift_distance": 0.015,
+        "transfer_timing": 4
+      },
+      "torso_rotation": {
+        "shoulder_rotation": 30.0,
+        "hip_rotation": 67.3,
+        "torso_rotation": -37.3,
+        "rotation_sync": 0.446
+      },
+      "back_leg_drive": {
+        "extension_change": 12.9,
+        "max_extension": 223.5,
+        "extension_speed": 7.9,
+        "drive_consistency": 0.109
+      },
+      "wrist_extension": {
+        "left_wrist_extension_score": null,
+        "right_wrist_extension_score": 87.3,
+        "follow_through_score": null
+      },
+      "head_position": {
+        "head_up_score": 42.1,
+        "eyes_forward_score": 57.7
+      },
+      "body_stability": {
+        "stability_score": 0.797,
+        "max_movement": 10.9,
+        "movement_consistency": 0.797
+      },
+      "legacy_metrics": {
+        "knee_bend_min_deg": 109.4,
+        "knee_bend_score": 0.765,
+        "hip_drive": 0.756,
+        "hip_drive_good": true,
+        "control_smoothness": 0.0
+      },
+      "age": 16
+    },
+    {
+      "shot_time_sec": 18.867,
+      "front_knee_bend_deg": 142.9,
+      "front_knee_score": 0.024,
+      "hip_rotation_power": {
+        "max_rotation_speed": 2.7,
+        "rotation_angle_change": 7.4,
+        "rotation_consistency": 0.94
+      },
+      "weight_transfer": {
+        "max_transfer_speed": 0.019,
+        "weight_shift_distance": 0.021,
+        "transfer_timing": 4
+      },
+      "torso_rotation": {
+        "shoulder_rotation": 6.3,
+        "hip_rotation": 7.4,
+        "torso_rotation": -1.1,
+        "rotation_sync": 0.848
+      },
+      "back_leg_drive": {
+        "extension_change": 42.3,
+        "max_extension": 249.3,
+        "extension_speed": 22.1,
+        "drive_consistency": 0.593
+      },
+      "wrist_extension": {
+        "left_wrist_extension_score": null,
+        "right_wrist_extension_score": null,
+        "follow_through_score": null
+      },
+      "head_position": {
+        "head_up_score": 100.0,
+        "eyes_forward_score": 34.6
+      },
+      "body_stability": {
+        "stability_score": 0.41,
+        "max_movement": 17.8,
+        "movement_consistency": 0.41
+      },
+      "legacy_metrics": {
+        "knee_bend_min_deg": 139.0,
+        "knee_bend_score": 0.024,
+        "hip_drive": 0.861,
+        "hip_drive_good": true,
+        "control_smoothness": 0.0
+      },
+      "age": 10
+    },
+    {
+      "shot_time_sec": 27.333,
+      "front_knee_bend_deg": 165.7,
+      "front_knee_score": 0.0,
+      "hip_rotation_power": {
+        "max_rotation_speed": 7.0,
+        "rotation_angle_change": 10.8,
+        "rotation_consistency": 0.266
+      },
+      "weight_transfer": {
+        "max_transfer_speed": 0.011,
+        "weight_shift_distance": 0.013,
+        "transfer_timing": 4
+      },
+      "torso_rotation": {
+        "shoulder_rotation": 18.9,
+        "hip_rotation": 10.8,
+        "torso_rotation": 8.1,
+        "rotation_sync": 0.572
+      },
+      "back_leg_drive": {
+        "extension_change": 0.1,
+        "max_extension": 265.8,
+        "extension_speed": 6.5,
+        "drive_consistency": 0.0
+      },
+      "wrist_extension": {
+        "left_wrist_extension_score": null,
+        "right_wrist_extension_score": null,
+        "follow_through_score": null
+      },
+      "head_position": {
+        "head_up_score": 100.0,
+        "eyes_forward_score": 22.0
+      },
+      "body_stability": {
+        "stability_score": 0.933,
+        "max_movement": 5.9,
+        "movement_consistency": 0.933
+      },
+      "legacy_metrics": {
+        "knee_bend_min_deg": 159.8,
+        "knee_bend_score": 0.0,
+        "hip_drive": 0.771,
+        "hip_drive_good": true,
+        "control_smoothness": 0.0
+      }
+    },
+    {
+      "shot_time_sec": 31.667,
+      "front_knee_bend_deg": 109.9,
+      "front_knee_score": 0.801,
+      "hip_rotation_power": {
+        "max_rotation_speed": 4.0,
+        "rotation_angle_change": 0.6,
+        "rotation_consistency": 0.63
+      },
+      "weight_transfer": {
+        "max_transfer_speed": 0.022,
+        "weight_shift_distance": 0.037,
+        "transfer_timing": 4
+      },
+      "torso_rotation": {
+        "shoulder_rotation": 9.2,
+        "hip_rotation": 0.6,
+        "torso_rotation": 8.6,
+        "rotation_sync": 0.063
+      },
+      "back_leg_drive": {
+        "extension_change": 24.4,
+        "max_extension": 264.0,
+        "extension_speed": 18.8,
+        "drive_consistency": 0.055
+      },
+      "wrist_extension": {
+        "left_wrist_extension_score": null,
+        "right_wrist_extension_score": null,
+        "follow_through_score": null
+      },
+      "head_position": {
+        "head_up_score": 100.0,
+        "eyes_forward_score": 56.5
+      },
+      "body_stability": {
+        "stability_score": 0.938,
+        "max_movement": 12.2,
+        "movement_consistency": 0.938
+      },
+      "legacy_metrics": {
+        "knee_bend_min_deg": 108.0,
+        "knee_bend_score": 0.801,
+        "hip_drive": 0.957,
+        "hip_drive_good": true,
+        "control_smoothness": 0.0
+      }
+    }
+  ],
+  "phases": {},
+  "legacy_metrics": {
+    "knee_bend_min_deg": 96.0,
+    "knee_bend_score": 1.0,
+    "hip_drive": 0.784,
+    "hip_drive_good": true,
+    "control_smoothness": 0.0
+  }
+}

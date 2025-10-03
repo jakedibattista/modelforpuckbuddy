@@ -136,7 +136,7 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload
 # Step 3: Analyze video (waits ~2 min, returns complete results)
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyze-video \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"test123","storage_path":"users/test123/..."}'
+  -d '{"user_id":"test123","storage_path":"users/test123/...","age_group":"10-12"}'
 
 # Optional: Get coaching feedback  
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \

@@ -118,6 +118,7 @@ def create_app() -> Flask:
         payload = request.get_json() or {}
         user_id = payload.get("user_id")
         storage_path = payload.get("storage_path")
+        age_group = payload.get("age_group", "16+")  # NEW: Accept age group parameter
         
         if not user_id or not storage_path:
             return jsonify({"error": "user_id and storage_path are required"}), 400
@@ -125,7 +126,7 @@ def create_app() -> Flask:
         try:
             manager = get_manager()
             
-            logger.info(f"Processing video analysis for user {user_id}, storage_path: {storage_path}")
+            logger.info(f"Processing video analysis for user {user_id}, storage_path: {storage_path}, age_group: {age_group}")
             
             # Verify the video exists and get metadata
             blob = manager.bucket.blob(storage_path)
@@ -161,6 +162,10 @@ def create_app() -> Flask:
                     
                     # Use correct keys from analyzer output
                     shots = analysis_results.get('shots', []) if analysis_results else []
+                    
+                    # Add age_group to each shot for age-based scoring
+                    for shot in shots:
+                        shot['age_group'] = age_group
                     video_duration = analysis_results.get('duration_est_sec', 0) if analysis_results else 0
                     logger.info(f"Pose analysis complete: shots_detected={len(shots)}, duration_sec={video_duration}")
                     

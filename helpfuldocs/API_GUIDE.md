@@ -52,7 +52,8 @@ POST /api/analyze-video
 
 {
   "user_id": "user123", 
-  "storage_path": "users/user123/20240315_143022_video.mov"
+  "storage_path": "users/user123/20240315_143022_video.mov",
+  "age_group": "10-12"  // Optional: "7-9", "10-12", "13-16", "16+" (default: "16+")
 }
 ```
 
@@ -61,28 +62,37 @@ POST /api/analyze-video
 {
   "success": true,
   "analysis": {
-    "data_analysis": "**Shots detected at timestamps:** 00:08, 00:15\n\n**Shot 1: 00:08:**\n**head position:** head excellent (100), eyes focused (68)\n**wrist performance:** excellent extension (82/100)\n**hip drive:** excellent (78/100, 75.3 speed)",
-    "shots_detected": 3,
-    "video_duration": 25.4,
-    "video_size_mb": 15.2,
+    "data_analysis": "**Shots detected at timestamps:** 00:05, 00:11\n\n**Shot 1: 00:05:**\n**Age Group:** High School/College (16+)\n\n**RAW PERFORMANCE:**\nPower: 3.8/10, Form: 2.8/10\n\n**COACHING SCORE (High School/College (16+) adjusted):**\nPower: 3.8/10, Form: 2.8/10\nOverall: 3.5/10",
+    "shots_detected": 2,
+    "video_duration": 14.9,
+    "video_size_mb": 7.6,
     "raw_analysis": {
       "video": "video.mov",
-      "fps": 30,
-      "duration_est_sec": 25.4,
+      "fps": 30.0,
+      "duration_est_sec": 14.9,
       "shots": [
         {
-          "shot_time_sec": 8.2,
+          "shot_time_sec": 4.533,
+          "age_group": "16+",
+          "front_knee_bend_deg": 151.9,
+          "hip_rotation_power": {
+            "max_rotation_speed": 3.5,
+            "rotation_angle_change": 1.9,
+            "rotation_consistency": 0.225
+          },
+          "wrist_extension": {
+            "left_wrist_extension_score": 89.4,
+            "right_wrist_extension_score": 94.0,
+            "follow_through_score": 91.9
+          },
           "head_position": {
-            "head_up_score": 85.2,
-            "eyes_forward_score": 72.1
+            "head_up_score": 100.0,
+            "eyes_forward_score": 65.4
           },
-          "wrist_control": {
-            "setup_control_score": 78.5,
-            "setup_control_category": "controlled"
-          },
-          "hip_drive_analysis": {
-            "hip_drive_score": 82.3,
-            "hip_drive_category": "excellent"
+          "body_stability": {
+            "stability_score": 0.867,
+            "max_movement": 3.0,
+            "movement_consistency": 0.867
           }
         }
       ]

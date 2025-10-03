@@ -43,7 +43,7 @@ curl -X PUT "[upload_url_from_step_1]" \
 # Use the storage_path from Step 1
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyze-video \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"test123","storage_path":"users/test123/videos/20240315_143022_shooting_drill.mov"}'
+  -d '{"user_id":"test123","storage_path":"users/test123/videos/20240315_143022_shooting_drill.mov","age_group":"10-12"}'
 ```
 
 **Expected wait time:** ~2 minutes for analysis to complete
@@ -53,7 +53,7 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyz
 # Get coaching feedback (requires analysis data)
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"test123","raw_analysis":{"shots":[{"shot_time_sec":8.2,"knee_bend_min_deg":95}]}}'
+  -d '{"user_id":"test123","raw_analysis":{"shots":[{"shot_time_sec":8.2,"front_knee_bend_deg":95,"hip_rotation_power":{"max_rotation_speed":25.0},"wrist_extension":{"follow_through_score":80.0}}]}}'
 ```
 
 ### Test Available Coaches

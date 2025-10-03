@@ -270,7 +270,7 @@ def parse_raw_pose_analysis(raw_analysis: Dict[str, Any]) -> str:
             shot_time = shot.get('shot_time_sec', 0)
             analysis_lines.append(f"**Shot {i}: {shot_time:.1f}s**")
             
-            # Head position metrics
+            # NEW DATA FORMAT - Head position metrics
             head_pos = shot.get('head_position', {})
             if head_pos.get('head_up_score') is not None:
                 head_score = head_pos['head_up_score']
@@ -280,40 +280,59 @@ def parse_raw_pose_analysis(raw_analysis: Dict[str, Any]) -> str:
                 eyes_score = head_pos['eyes_forward_score']
                 analysis_lines.append(f"**eyes focused:** {_score_to_category(eyes_score)} ({eyes_score:.0f}/100)")
             
-            # Wrist control and extension
-            wrist_control = shot.get('wrist_control', {})
-            if wrist_control.get('setup_control_score') is not None:
-                control_score = wrist_control['setup_control_score']
-                control_category = wrist_control.get('setup_control_category', 'unknown')
-                analysis_lines.append(f"**wrist control:** {control_category} setup ({control_score:.0f}/100)")
-            
+            # NEW: Wrist extension analysis
             wrist_ext = shot.get('wrist_extension', {})
+            if wrist_ext.get('left_wrist_extension_score') is not None:
+                left_score = wrist_ext['left_wrist_extension_score']
+                analysis_lines.append(f"**left wrist extension:** {_score_to_category(left_score)} ({left_score:.0f}/100)")
+            
+            if wrist_ext.get('right_wrist_extension_score') is not None:
+                right_score = wrist_ext['right_wrist_extension_score']
+                analysis_lines.append(f"**right wrist extension:** {_score_to_category(right_score)} ({right_score:.0f}/100)")
+            
             if wrist_ext.get('follow_through_score') is not None:
                 follow_score = wrist_ext['follow_through_score']
-                analysis_lines.append(f"**wrist extension:** {_score_to_category(follow_score)} follow-through ({follow_score:.0f}/100)")
+                analysis_lines.append(f"**follow-through:** {_score_to_category(follow_score)} ({follow_score:.0f}/100)")
             
-            # Hip drive analysis
-            hip_analysis = shot.get('hip_drive_analysis', {})
-            if hip_analysis.get('hip_drive_score') is not None:
-                hip_score = hip_analysis['hip_drive_score']
-                hip_category = hip_analysis.get('hip_drive_category', 'unknown')
-                hip_speed = hip_analysis.get('peak_forward_speed', 0)
-                analysis_lines.append(f"**hip drive:** {hip_category} ({hip_score:.0f}/100, {hip_speed:.1f} speed)")
+            # NEW: Hip rotation power analysis
+            hip_rotation = shot.get('hip_rotation_power', {})
+            if hip_rotation.get('max_rotation_speed') is not None:
+                hip_speed = hip_rotation['max_rotation_speed']
+                hip_angle = hip_rotation.get('rotation_angle_change', 0)
+                analysis_lines.append(f"**hip rotation power:** {_score_to_category(hip_speed * 2)} ({hip_speed:.1f} speed, {hip_angle:.1f}° change)")
             
-            # Lower body triangle
-            lower_body = shot.get('lower_body_triangle', {})
-            if lower_body.get('front_knee_bend_deg') is not None:
-                knee_angle = lower_body['front_knee_bend_deg']
+            # NEW: Front knee bend (direct access)
+            if shot.get('front_knee_bend_deg') is not None:
+                knee_angle = shot['front_knee_bend_deg']
                 analysis_lines.append(f"**front knee bend:** {knee_angle:.0f}° ({_knee_angle_category(knee_angle)})")
             
-            if lower_body.get('back_leg_extension_deg') is not None:
-                back_angle = lower_body['back_leg_extension_deg']
-                analysis_lines.append(f"**back leg extension:** {back_angle:.0f}° ({_leg_extension_category(back_angle)})")
+            # NEW: Back leg drive analysis
+            back_leg_drive = shot.get('back_leg_drive', {})
+            if back_leg_drive.get('max_extension') is not None:
+                back_extension = back_leg_drive['max_extension']
+                back_angle = 180.0 - (back_extension / 10.0) if back_extension > 0 else 180.0  # Rough conversion
+                analysis_lines.append(f"**back leg drive:** {back_extension:.1f} extension ({_leg_extension_category(back_angle)})")
             
-            # Legacy metrics for compatibility
-            if 'knee_bend_min_deg' in shot:
-                legacy_knee = shot['knee_bend_min_deg']
-                analysis_lines.append(f"**knee bend minimum:** {legacy_knee:.0f}°")
+            # NEW: Body stability analysis
+            body_stability = shot.get('body_stability', {})
+            if body_stability.get('stability_score') is not None:
+                stability_score = body_stability['stability_score']
+                analysis_lines.append(f"**body stability:** {_score_to_category(stability_score * 100)} ({stability_score:.2f})")
+            
+            # NEW: Weight transfer analysis
+            weight_transfer = shot.get('weight_transfer', {})
+            if weight_transfer.get('max_transfer_speed') is not None:
+                transfer_speed = weight_transfer['max_transfer_speed']
+                transfer_distance = weight_transfer.get('weight_shift_distance', 0)
+                analysis_lines.append(f"**weight transfer:** {transfer_speed:.3f} speed, {transfer_distance:.3f} distance")
+            
+            # NEW: Torso rotation analysis
+            torso_rotation = shot.get('torso_rotation', {})
+            if torso_rotation.get('shoulder_rotation') is not None:
+                shoulder_rot = torso_rotation['shoulder_rotation']
+                hip_rot = torso_rotation.get('hip_rotation', 0)
+                analysis_lines.append(f"**torso rotation:** shoulder {shoulder_rot:.1f}°, hip {hip_rot:.1f}°")
+            
             
             analysis_lines.append("")  # Blank line between shots
         
