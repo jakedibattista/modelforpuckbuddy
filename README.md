@@ -77,7 +77,7 @@ python -c "from analysis.pose_extraction_shooting_drills import analyze_drill; i
 ## Production Deployment
 The backend API is deployed to Cloud Run and ready for production use:
 
-**Backend API URL**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+**Backend API URL**: `https://puck-buddy-model-7iv2gspkgq-uc.a.run.app`
 
 ### Security & Rate Limits
 
@@ -117,10 +117,10 @@ The backend API is deployed to Cloud Run and ready for production use:
 ### Testing the deployment:
 ```bash
 # Health check
-curl https://puck-buddy-model-22317830094.us-central1.run.app/health
+curl https://puck-buddy-model-7iv2gspkgq-uc.a.run.app/health
 
 # Test signed URL generation (requires Firebase service account setup)
-curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload-url \
+curl -X POST https://puck-buddy-model-7iv2gspkgq-uc.a.run.app/api/upload-url \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test-user","filename":"test.mp4"}'
 ```
@@ -131,19 +131,19 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload
 
 ```bash
 # Step 1: Get upload URL
-curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/upload-url \
+curl -X POST https://puck-buddy-model-7iv2gspkgq-uc.a.run.app/api/upload-url \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","content_type":"video/mov"}'
 
 # Step 2: Upload video using returned URL (use PUT with video file)
 
 # Step 3: Analyze video (waits ~2 min, returns complete results)
-curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyze-video \
+curl -X POST https://puck-buddy-model-7iv2gspkgq-uc.a.run.app/api/analyze-video \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","storage_path":"users/test123/...","age_group":"10-12"}'
 
 # Optional: Get coaching feedback  
-curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \
+curl -X POST https://puck-buddy-model-7iv2gspkgq-uc.a.run.app/api/coach/seth \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","data_analysis":{"shots":[{"shot_time_sec":8.2,"front_knee_bend_deg":95,"hip_rotation_power":{"max_rotation_speed":25.0},"wrist_extension":{"follow_through_score":80.0}}]}}'
 ```
@@ -152,12 +152,12 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/
 ### OpenIce AI Coach (Optional):
 ```bash
 # Initialize AI coaching session
-curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/openice/init \
+curl -X POST https://puck-buddy-model-7iv2gspkgq-uc.a.run.app/api/openice/init \
   -H "Content-Type: application/json" \
   -d '{"user_id":"test123","analysis_data":"**Shots detected at timestamps:** 00:08, 00:15..."}'
 
 # Ask follow-up questions
-curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/openice/chat \
+curl -X POST https://puck-buddy-model-7iv2gspkgq-uc.a.run.app/api/openice/chat \
   -H "Content-Type: application/json" \
   -d '{"session_id":"session-id","question":"What drill should I practice?"}'
 ```
