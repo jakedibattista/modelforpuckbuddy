@@ -26,12 +26,7 @@ from utils.config import load_env
 from utils.io import load_json_file
 load_env()
 
-# Unified Google GenAI client import
-try:
-    from google import genai  # type: ignore
-    GENAI_AVAILABLE = True
-except Exception:
-    GENAI_AVAILABLE = False
+# Gemini integration removed - using local formatting only
 
 
 
@@ -755,73 +750,7 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
     return timestamp_line + "\n\n" + "\n\n".join(shot_lines)
 
 
-def generate_summary_with_gemini(
-    raw: Dict[str, Any],
-    model_name: str = "gemini-2.5-flash-lite",
-    temperature: float = 0.1,
-    max_output_tokens: int = 1024,
-) -> str:
-    """Generate data-focused summary using Gemini with strict instructions.
-
-    Returns polished text, or raises an error if fails.
-    """
-    if not GENAI_AVAILABLE:
-        raise RuntimeError("google genai client not available. Install with: pip install google-genai")
-
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY environment variable not set")
-
-    try:
-        client = genai.Client(api_key=api_key)
-        system = (
-            "You are a data analysis system. Format the shooting drill JSON data into the EXACT structured format specified below. "
-            "CRITICAL: Follow the format precisely with no deviations.\n\n"
-            
-            "Time formatting: Convert all shot_time_sec values to MM:SS format (e.g., 8.2 seconds becomes 00:08).\n"
-            
-            "Metrics interpretation:\n"
-            "- Head position: Break down head_up_score and eyes_forward_score separately with intuitive labels\n"
-            "- Wrist performance: Prefer wrist_extension.follow_through_score over setup_control (more reliable)\n"
-            "- Hip drive: Include hip_drive_analysis.peak_forward_speed for context alongside category\n"
-            "- Front knee angle: Use front_knee_bend_deg from lower_body_triangle if available, else knee_bend_min_deg\n"
-            "- Back leg angle: Use back_leg_extension_deg from lower_body_triangle, add '(too bent)' if <150°\n"
-            "- For any missing data, use 'not tracked'\n\n"
-            
-            "EXACT OUTPUT FORMAT:\n"
-            "**Shots detected at timestamps:** MM:SS, MM:SS, MM:SS\n\n"
-            "**Shot 1: MM:SS:**\n"
-            "**head position:** head excellent/good/low (XX), eyes locked/focused/wandering (XX)\n"
-            "**wrist performance:** excellent/good/fair extension (XX/100) or excellent/good/fair extension (XX/100, L:XX R:XX)\n"
-            "**hip drive:** excellent/good/weak (XX/100, XX.X speed)\n"
-            "**front knee angle:** XXX°\n"
-            "**back leg angle:** XXX°\n\n"
-            "**Shot 2: MM:SS:**\n"
-            "[repeat format for each shot]\n\n"
-            
-            "Do NOT add any other text, explanations, or sections. Output ONLY the structured data in this exact format."
-        )
-
-        resp = client.models.generate_content(
-            model=model_name,
-            contents=[
-                {"role": "user", "parts": [{"text": json.dumps(raw)}]},
-            ],
-            config={
-                "system_instruction": system,
-                "temperature": temperature,
-                "max_output_tokens": max_output_tokens,
-            },
-        )
-
-        text = (getattr(resp, "text", None) or "").strip()
-        if not text:
-            raise RuntimeError("Gemini returned empty response")
-
-        return text
-
-    except Exception as e:
-        raise RuntimeError(f"Gemini API call failed: {e}")
+# Legacy Gemini function removed - using local formatting only
 
 
 
@@ -839,10 +768,6 @@ def save_summary_text(video_or_json: Path, summary: str) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Data Summary Agent - Interprets pose_extraction_shooting_drills.py JSON output")
     parser.add_argument("json_path", help="Path to drill feedback JSON file")
-    parser.add_argument("--model", default="gemini-2.5-flash-lite", help="Gemini model name")
-    parser.add_argument("--temperature", type=float, default=0.1)
-    parser.add_argument("--max_tokens", type=int, default=1024)
-    parser.add_argument("--local", action="store_true", help="Force local formatting (skip Gemini)")
     args = parser.parse_args()
 
     source_path = Path(args.json_path)
@@ -851,20 +776,8 @@ def main() -> None:
     
     result = load_feedback_json(source_path)
 
-    # Use local formatting if requested, otherwise try Gemini with fallback
-    if args.local:
-        summary = format_shot_summary_locally(result)
-    else:
-        try:
-            summary = generate_summary_with_gemini(
-                result,
-                model_name=args.model,
-                temperature=args.temperature,
-                max_output_tokens=args.max_tokens,
-            )
-        except Exception as e:
-            print(f"Gemini formatting failed ({e}), using local formatting")
-            summary = format_shot_summary_locally(result)
+    # Use local formatting with new scoring system
+    summary = format_shot_summary_locally(result)
 
     out_path = save_summary_text(source_path, summary)
     print(summary)

@@ -53,7 +53,7 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyz
 # Get coaching feedback (requires analysis data)
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"test123","raw_analysis":{"shots":[{"shot_time_sec":8.2,"front_knee_bend_deg":95,"hip_rotation_power":{"max_rotation_speed":25.0},"wrist_extension":{"follow_through_score":80.0}}]}}'
+  -d '{"user_id":"test123","data_analysis":{"shots":[{"shot_time_sec":8.2,"front_knee_bend_deg":95,"hip_rotation_power":{"max_rotation_speed":25.0},"wrist_extension":{"follow_through_score":80.0}}]}}'
 ```
 
 ### Test Available Coaches

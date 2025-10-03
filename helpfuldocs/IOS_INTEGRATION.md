@@ -135,15 +135,15 @@ struct AnalysisResponse: Codable {
 }
 
 struct AnalysisResult: Codable {
-    let data_analysis: String
+    let data_summary: String
     let shots_detected: Int
     let video_duration: Double
-    let raw_analysis: RawAnalysis?
+    let data_analysis: DataAnalysis?
     
-    var dataAnalysis: String { data_analysis }
+    var dataAnalysis: String { data_summary }
 }
 
-struct RawAnalysis: Codable {
+struct DataAnalysis: Codable {
     // Include if you need coaching endpoints
 }
 
@@ -304,7 +304,7 @@ To add Seth's coaching feedback:
 @Published var coachingFeedback: String?
 
 func getSethCoaching(from analysis: AnalysisResult) async {
-    guard let rawAnalysis = analysis.raw_analysis else { return }
+    guard let dataAnalysis = analysis.data_analysis else { return }
     
     do {
         let request = APIRequest(
@@ -312,7 +312,7 @@ func getSethCoaching(from analysis: AnalysisResult) async {
             method: "POST", 
             body: [
                 "user_id": Auth.auth().currentUser?.uid ?? "",
-                "raw_analysis": rawAnalysis
+                "data_analysis": dataAnalysis
             ]
         )
         

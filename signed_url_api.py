@@ -145,7 +145,7 @@ def create_app() -> Flask:
                 import tempfile
                 import os
                 from analysis.pose_extraction_shooting_drills import analyze_drill
-                from agents.data_summary_agent import generate_summary_with_gemini
+                # Using local formatting only (Gemini integration removed)
                 
                 # Download video to temporary location for processing
                 logger.info("Downloading video for pose analysis")
@@ -179,7 +179,8 @@ def create_app() -> Flask:
                         return jsonify({
                             "success": True,
                             "analysis": {
-                                "data_analysis": data_analysis,
+                                "data_analysis": {"shots": [], "duration_est_sec": video_duration, "fps": 30},  # Send structured data
+                                "data_summary": data_analysis,  # Keep formatted text for display
                                 "shots_detected": 0,
                                 "video_duration": video_duration,
                                 "video_size_mb": round(video_size_mb, 1),
@@ -189,9 +190,10 @@ def create_app() -> Flask:
                             }
                         })
                     
-                    # Generate data summary only (simplified for efficiency)
-                    logger.info("Generating data summary with Gemini")
-                    data_analysis = generate_summary_with_gemini(analysis_results)
+                    # Generate data summary using local formatting (better scoring system)
+                    logger.info("Generating data summary with local formatting")
+                    from agents.data_summary_agent import format_shot_summary_locally
+                    data_analysis = format_shot_summary_locally(analysis_results)
                     
                     logger.info("Full video analysis completed successfully")
                     
@@ -227,13 +229,13 @@ def create_app() -> Flask:
                     return jsonify({
                         "success": True,
                         "analysis": {
-                            "data_analysis": data_analysis,
+                            "data_analysis": analysis_results,  # Complete structured data with age groups
+                            "data_summary": data_analysis,  # Formatted text for display
                             "shots_detected": len(shots),
                             "video_duration": video_duration,
                             "video_size_mb": round(video_size_mb, 1),
                             "pose_analysis": True,
-                            "message": "MediaPipe pose analysis with structured data summary",
-                            "raw_analysis": analysis_results  # Include for coach endpoints
+                            "message": "MediaPipe pose analysis with structured data summary"
                         }
                     })
                     
@@ -385,20 +387,20 @@ def create_app() -> Flask:
             
         payload = request.get_json() or {}
         analysis_data = payload.get("analysis_data")
-        raw_analysis = payload.get("raw_analysis")  # NEW: Accept raw pose analysis
+        data_analysis = payload.get("data_analysis")  # Accept structured data with age groups
         user_id = payload.get("user_id", "anonymous")
         
-        if not analysis_data and not raw_analysis:
-            return jsonify({"error": "analysis_data or raw_analysis is required"}), 400
+        if not analysis_data and not data_analysis:
+            return jsonify({"error": "analysis_data or data_analysis is required"}), 400
         
         try:
             agent = get_openice_agent()
             
-            # Convert raw analysis to readable format if provided
-            if raw_analysis and not analysis_data:
+            # Convert data_analysis to readable format if provided
+            if data_analysis and not analysis_data:
                 from agents.openice_agent import parse_raw_pose_analysis
-                analysis_data = parse_raw_pose_analysis(raw_analysis)
-                logger.info("Converted raw pose analysis to readable format for OpenIce")
+                analysis_data = parse_raw_pose_analysis(data_analysis)
+                logger.info("Converted data_analysis to readable format for OpenIce")
             
             session_id = agent.create_chat_session(analysis_data, user_id)
             
@@ -462,20 +464,20 @@ def create_app() -> Flask:
         """Generate Seth's coaching feedback from analysis data."""
         payload = request.get_json() or {}
         
-        # Can accept either raw analysis data or reference to completed analysis
-        raw_analysis = payload.get("raw_analysis")
+        # Accept data_analysis (structured data with age groups)
+        data_analysis = payload.get("data_analysis")
         user_id = payload.get("user_id")
         analysis_id = payload.get("analysis_id")  # Future: reference to stored analysis
         
-        if not raw_analysis:
-            return jsonify({"error": "raw_analysis is required"}), 400
+        if not data_analysis:
+            return jsonify({"error": "data_analysis is required"}), 400
             
         try:
             # Import seth shooting agent
             from agents.seth_shooting_agent import generate_sections
             
             logger.info("Generating Seth coaching feedback")
-            coach_feedback = generate_sections(raw_analysis)
+            coach_feedback = generate_sections(data_analysis)
             
             return jsonify({
                 "success": True,

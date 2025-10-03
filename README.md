@@ -141,7 +141,7 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyz
 # Optional: Get coaching feedback  
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"test123","raw_analysis":"[analysis_data_from_step_3]"}'
+  -d '{"user_id":"test123","data_analysis":"[analysis_data_from_step_3]"}'
 ```
 
 

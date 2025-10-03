@@ -66,7 +66,7 @@ POST /api/analyze-video
     "shots_detected": 2,
     "video_duration": 14.9,
     "video_size_mb": 7.6,
-    "raw_analysis": {
+    "data_analysis": {
       "video": "video.mov",
       "fps": 30.0,
       "duration_est_sec": 14.9,
@@ -102,8 +102,8 @@ POST /api/analyze-video
 ```
 
 **That's it!** Your app gets:
-- ✅ **Human-readable summary** in `data_analysis` (show this to users)
-- ✅ **Complete technical data** in `raw_analysis` (use for coaching endpoints or advanced features)
+- ✅ **Human-readable summary** in `data_summary` (show this to users)
+- ✅ **Complete technical data** in `data_analysis` (use for coaching endpoints or advanced features)
 
 ---
 
@@ -133,7 +133,7 @@ POST /api/coach/seth
 
 {
   "user_id": "user123",
-  "raw_analysis": "analysis data from step 3"
+  "data_analysis": "analysis data from step 3"
 }
 ```
 
@@ -168,7 +168,7 @@ POST /api/openice/init
 
 {
   "user_id": "user123",
-  "raw_analysis": {
+  "data_analysis": {
     "video": "video.mov",
     "shots": [...],
     "duration_est_sec": 25.4
