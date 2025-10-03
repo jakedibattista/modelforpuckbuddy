@@ -205,7 +205,7 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
     return ww[:3], wt[:3]
 
 
-def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.0-flash-lite") -> str:
+def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite-latest") -> str:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError("GOOGLE_API_KEY not set")
