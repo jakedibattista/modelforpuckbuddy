@@ -101,7 +101,7 @@ Be specific, be brief, be helpful.
         try:
             # Create chat session with Google Search enabled and optimized for concise responses
             chat = self.client.chats.create(
-                model='gemini-2.5-flash',
+                model='gemini-2.5-flash-latest',
                 config=types.GenerateContentConfig(
                     tools=[{"google_search": {}}],
                     max_output_tokens=1000,  # Limit to ~150 words for concise responses

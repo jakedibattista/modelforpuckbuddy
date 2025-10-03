@@ -1,8 +1,8 @@
 # Hockey Shooting Drill Feedback
 
 Runtime: MediaPipe Pose + OpenCV + FFmpeg.
-Enhanced form analysis: head position, upper body square, lower body triangle.
-Agents: data analysis, coaching feedback, and conversational AI coach (Gemini + Google Search).
+Enhanced form analysis: head position, wrist extension, hip rotation, body stability.
+Agents: data analysis (local heuristics), coaching feedback, and conversational AI coach (Gemini + Google Search).
 
 ## Project layout
 ```text
@@ -93,6 +93,10 @@ The backend API is deployed to Cloud Run and ready for production use:
 - **All Endpoints**: 200 requests/day, 50 requests/hour
 - **Response**: HTTP 429 when limit exceeded
 
+**🔑 Admin Access:**
+- **Unlimited API calls** for admin users (bypass all rate limits)
+- **Admin users**: `jakedibattista`, `xzRxXo2C65TaVzh32FpWDEqDycA2`, `admin`
+
 ### Available Endpoints:
 
 **Core Video Analysis:**
@@ -141,7 +145,7 @@ curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/analyz
 # Optional: Get coaching feedback  
 curl -X POST https://puck-buddy-model-22317830094.us-central1.run.app/api/coach/seth \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"test123","data_analysis":"[analysis_data_from_step_3]"}'
+  -d '{"user_id":"test123","data_analysis":{"shots":[{"shot_time_sec":8.2,"front_knee_bend_deg":95,"hip_rotation_power":{"max_rotation_speed":25.0},"wrist_extension":{"follow_through_score":80.0}}]}}'
 ```
 
 

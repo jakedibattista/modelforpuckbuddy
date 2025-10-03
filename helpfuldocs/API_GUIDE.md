@@ -62,10 +62,7 @@ POST /api/analyze-video
 {
   "success": true,
   "analysis": {
-    "data_analysis": "**Shots detected at timestamps:** 00:05, 00:11\n\n**Shot 1: 00:05:**\n**Age Group:** High School/College (17+)\n\n**RAW PERFORMANCE:**\nPower: 3.8/10, Form: 2.8/10\n\n**COACHING SCORE (High School/College (17+) adjusted):**\nPower: 3.8/10, Form: 2.8/10\nOverall: 3.5/10",
-    "shots_detected": 2,
-    "video_duration": 14.9,
-    "video_size_mb": 7.6,
+    "data_summary": "**Shots detected at timestamps:** 00:05, 00:11\n\n**Age Group:** U12 (10-12 years) (20% boost applied)\n**Overall Performance:** 4.2/10\n\n**Shot 1: 00:05:**\n**POWER BREAKDOWN:**\n├── Front Knee: 8/10 (good, 120°)\n├── Hip Rotation: 6/10 (fair)\n├── Back Leg Drive: 3/10 (poor)\n├── Weight Transfer: 9/10 (excellent)\n└── Torso Rotation: 7/10 (fair)\n\n**FORM BREAKDOWN:**\n├── Left Wrist Extension: 9/10 (excellent)\n├── Right Wrist Extension: 9/10 (excellent)\n├── Head Position: 8/10 (good)\n└── Body Stability: 7/10 (fair)",
     "data_analysis": {
       "video": "video.mov",
       "fps": 30.0,
@@ -256,6 +253,12 @@ To ensure fair usage and control costs, the following limits apply per `user_id`
 - Status: `429 Too Many Requests`
 - Response: `{"error": "429 Too Many Requests: 10 per 1 hour"}`
 - Action: Wait until the hour resets, or contact support for higher limits
+
+### Admin Access
+**🔑 Unlimited API calls for admin users:**
+- **Admin users**: `jakedibattista`, `xzRxXo2C65TaVzh32FpWDEqDycA2`, `admin`
+- **Bypass all rate limits** - no 429 errors
+- **Check admin status**: `POST /api/admin/status` with `{"user_id": "your_id"}`
 
 **iOS Error Handling Example:**
 ```swift

@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Data Summary Agent (Gemini Flash Lite + local heuristics)
+"""Data Summary Agent (Local formatting with deterministic heuristics)
 
 This agent:
 - Interprets the JSON output from pose_extraction_shooting_drills.py
 - Produces a short, data-focused summary using deterministic heuristics
-- Optionally sends the draft to a lightweight LLM (Gemini 2.5 Flash Lite)
-  for tone polishing, with strict instructions and low token limits
+- Converts raw biomechanical measurements to 1-10 coaching scores
+- Applies age-based adjustments for different skill levels
+- Formats results into readable category breakdowns
 
 Usage:
   python data_summary_agent.py results/drill/foo_drill_feedback.json
 
-Environment:
-  GOOGLE_API_KEY (optional). If missing or model fails, falls back to local summary.
+Features:
+- No external AI dependencies - pure Python logic
+- Age-adjusted scoring (7-9, 10-12, 13-16, 17+)
+- Category-based feedback (Power vs Form breakdown)
+- Individual wrist tracking (left/right separate)
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ from utils.config import load_env
 from utils.io import load_json_file
 load_env()
 
-# Gemini integration removed - using local formatting only
+# Using local formatting with deterministic heuristics only
 
 
 
@@ -670,22 +674,39 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
     
     timestamp_line = f"**Shots detected at timestamps:** {', '.join(timestamps)}"
     
+    # Get age group and curve info (show once at top)
+    age_group = shots[0].get("age_group", "17+") if shots else "17+"
+    age_category = get_age_category(age_group)
+    curve_info = ""
+    if age_group == "7-9":
+        curve_info = " (30% boost applied)"
+    elif age_group == "10-12":
+        curve_info = " (20% boost applied)"
+    elif age_group == "13-16":
+        curve_info = " (10% boost applied)"
+    elif age_group == "17+":
+        curve_info = " (no curve - high school/college level)"
+    
+    age_line = f"**Age Group:** {age_category}{curve_info}"
+    
+    # Calculate overall performance across all shots
+    overall_scores = []
+    for shot in shots:
+        validated = validate_shot_data(shot)
+        overall_scores.append(validated['overall_score'])
+    
+    if overall_scores:
+        avg_overall = sum(overall_scores) / len(overall_scores)
+        overall_line = f"**Overall Performance:** {avg_overall:.1f}/10"
+    else:
+        overall_line = "**Overall Performance:** N/A"
+    
     # Format each shot with new power vs form structure
     shot_lines = []
     for i, shot in enumerate(shots, 1):
         validated = validate_shot_data(shot)
         
         shot_block = f"**Shot {i}: {validated['time_formatted']}:**\n"
-        shot_block += f"**Age Group:** {validated['age_category']}\n\n"
-        
-        # Raw Performance (no age adjustments)
-        shot_block += f"**RAW PERFORMANCE:**\n"
-        shot_block += f"Power: {validated['raw_power_score']}/10, Form: {validated['raw_form_score']}/10\n\n"
-        
-        # Coaching Score (age-adjusted)
-        shot_block += f"**COACHING SCORE ({validated['age_category']} adjusted):**\n"
-        shot_block += f"Power: {validated['power_score']}/10, Form: {validated['form_score']}/10\n"
-        shot_block += f"Overall: {validated['overall_score']}/10\n\n"
         
         # Power Metrics Breakdown
         shot_block += f"**POWER BREAKDOWN:**\n"
@@ -715,21 +736,30 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
         shot_block += f"**FORM BREAKDOWN:**\n"
         form_metrics = validated['form_metrics']
         
-        # Wrist Extension
+        # Left Wrist Extension (separate category)
         wrist = form_metrics['wrist_extension']
         if wrist['tracked']:
             breakdown = wrist['breakdown']
-            left_info = f"L:{breakdown['left_wrist']['score']}/10" if breakdown['left_wrist']['tracked'] else "L:not tracked"
-            right_info = f"R:{breakdown['right_wrist']['score']}/10" if breakdown['right_wrist']['tracked'] else "R:not tracked"
-            follow_info = f"Follow:{breakdown['follow_through']['score']}/10" if breakdown['follow_through']['tracked'] else ""
-            
-            wrist_details = f"{left_info}, {right_info}"
-            if follow_info:
-                wrist_details += f", {follow_info}"
-            
-            shot_block += f"├── Wrist Extension: {wrist['score']}/10 ({wrist['category']}) - {wrist_details}\n"
+            if breakdown['left_wrist']['tracked']:
+                left_score = breakdown['left_wrist']['score']
+                left_category = _get_wrist_category(left_score)
+                shot_block += f"├── Left Wrist Extension: {left_score}/10 ({left_category})\n"
+            else:
+                shot_block += f"├── Left Wrist Extension: Not tracked (insufficient data)\n"
         else:
-            shot_block += f"├── Wrist Extension: Not tracked (insufficient data)\n"
+            shot_block += f"├── Left Wrist Extension: Not tracked (insufficient data)\n"
+        
+        # Right Wrist Extension (separate category)
+        if wrist['tracked']:
+            breakdown = wrist['breakdown']
+            if breakdown['right_wrist']['tracked']:
+                right_score = breakdown['right_wrist']['score']
+                right_category = _get_wrist_category(right_score)
+                shot_block += f"├── Right Wrist Extension: {right_score}/10 ({right_category})\n"
+            else:
+                shot_block += f"├── Right Wrist Extension: Not tracked (insufficient data)\n"
+        else:
+            shot_block += f"├── Right Wrist Extension: Not tracked (insufficient data)\n"
         
         # Head Position
         head = form_metrics['head_position']
@@ -747,10 +777,10 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
         
         shot_lines.append(shot_block)
     
-    return timestamp_line + "\n\n" + "\n\n".join(shot_lines)
+    return timestamp_line + "\n\n" + age_line + "\n" + overall_line + "\n\n" + "\n\n".join(shot_lines)
 
 
-# Legacy Gemini function removed - using local formatting only
+# All formatting done locally with deterministic heuristics
 
 
 
@@ -776,7 +806,7 @@ def main() -> None:
     
     result = load_feedback_json(source_path)
 
-    # Use local formatting with new scoring system
+    # Generate summary using local deterministic heuristics
     summary = format_shot_summary_locally(result)
 
     out_path = save_summary_text(source_path, summary)

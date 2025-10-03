@@ -9,7 +9,7 @@ Quick guide to test the PuckBuddy video analysis system locally and via API.
 pip install google-genai python-dotenv
 ```
 
-### 2. Set API Key
+### 2. Set API Key (Optional - for OpenIce agent only)
 ```bash
 echo "GOOGLE_API_KEY=your_key_here" > .env
 ```

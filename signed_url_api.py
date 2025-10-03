@@ -27,12 +27,26 @@ def create_app() -> Flask:
          allow_headers=["Content-Type", "Authorization"],
          supports_credentials=True)
 
+    # Admin users who get unlimited API access
+    ADMIN_USERS = {
+        "jakedibattista",              # Your username
+        "xzRxXo2C65TaVzh32FpWDEqDycA2", # Your Firebase user ID (from logs)
+        "admin",                       # Generic admin user
+        # Add more admin user IDs here as needed
+    }
+    
     # Rate limiting - per user limits to prevent abuse and control costs
     def get_user_id_from_request():
         """Extract user_id from request payload for rate limiting."""
         try:
             data = request.get_json(silent=True) or {}
-            return data.get('user_id') or get_remote_address()
+            user_id = data.get('user_id') or get_remote_address()
+            username = data.get('username')  # Check username field for admin access
+            
+            # Check if user is admin (check both user_id and username fields)
+            if user_id in ADMIN_USERS or username in ADMIN_USERS:
+                return f"admin_{user_id or username}"  # Special admin key
+            return user_id
         except:
             return get_remote_address()
     
@@ -42,6 +56,25 @@ def create_app() -> Flask:
         default_limits=["200 per day", "50 per hour"],  # Global limits
         storage_uri="memory://"  # Use in-memory storage (simple, no Redis needed)
     )
+    
+    # Override rate limits for admin users
+    @limiter.request_filter
+    def admin_bypass():
+        """Bypass rate limits for admin users."""
+        try:
+            data = request.get_json(silent=True) or {}
+            user_id = data.get('user_id')
+            username = data.get('username')
+            
+            logger.info(f"🔐 Rate limit check - user_id: {user_id}, username: {username}")
+            
+            if user_id in ADMIN_USERS or username in ADMIN_USERS:
+                logger.info(f"✅ ADMIN BYPASS GRANTED for {user_id or username}")
+                return True  # Bypass rate limiting
+        except Exception as e:
+            logger.error(f"❌ Error in admin_bypass: {e}")
+            pass
+        return False  # Apply normal rate limiting
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("signed_url_api")
@@ -73,6 +106,26 @@ def create_app() -> Flask:
             "status": "healthy",
             "service": "puck-buddy-signed-url-api",
         }
+    
+    @app.route("/api/admin/status", methods=["POST"])
+    def check_admin_status() -> tuple:
+        """Check if a user has admin privileges."""
+        payload = request.get_json() or {}
+        user_id = payload.get("user_id")
+        username = payload.get("username")
+        
+        if not user_id and not username:
+            return jsonify({"error": "user_id or username is required"}), 400
+        
+        is_admin = user_id in ADMIN_USERS or username in ADMIN_USERS
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "username": username,
+            "is_admin": is_admin,
+            "unlimited_access": is_admin,
+            "rate_limits_bypassed": is_admin
+        })
 
     @app.route("/api/upload-url", methods=["POST"])
     @limiter.limit("20 per hour")  # Allow more upload URL requests
@@ -126,7 +179,13 @@ def create_app() -> Flask:
         try:
             manager = get_manager()
             
-            logger.info(f"Processing video analysis for user {user_id}, storage_path: {storage_path}, age_group: {age_group}")
+            # Check if user is admin and log accordingly
+            username = payload.get("username")
+            is_admin = user_id in ADMIN_USERS or username in ADMIN_USERS
+            if is_admin:
+                logger.info(f"🔑 ADMIN REQUEST - Processing video analysis for admin user {user_id or username}, storage_path: {storage_path}, age_group: {age_group}")
+            else:
+                logger.info(f"Processing video analysis for user {user_id}, storage_path: {storage_path}, age_group: {age_group}")
             
             # Verify the video exists and get metadata
             blob = manager.bucket.blob(storage_path)
