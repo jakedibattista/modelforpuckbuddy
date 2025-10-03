@@ -137,19 +137,21 @@ def score_weight_transfer(transfer_data: Dict[str, Any]) -> Tuple[int, str]:
     distance = transfer_data.get("weight_shift_distance", 0.0)
     
     # Combine speed and distance for transfer quality
+    # Fixed: Scale values properly
     transfer_score = (max_speed * 1000) + (distance * 1000)  # Scale up small values
     
-    if transfer_score >= 0.05:
+    # More realistic thresholds based on typical values (0-100 range after scaling)
+    if transfer_score >= 50:
         return (10, "excellent")
-    elif transfer_score >= 0.03:
+    elif transfer_score >= 30:
         return (9, "very good")
-    elif transfer_score >= 0.02:
+    elif transfer_score >= 20:
         return (8, "good")
-    elif transfer_score >= 0.015:
+    elif transfer_score >= 15:
         return (7, "fair")
-    elif transfer_score >= 0.01:
+    elif transfer_score >= 10:
         return (6, "poor")
-    elif transfer_score >= 0.005:
+    elif transfer_score >= 5:
         return (4, "very poor")
     else:
         return (2, "minimal")
@@ -338,18 +340,18 @@ def score_head_position(head_data: Dict[str, Any]) -> Tuple[int, str]:
     else:
         score = eyes_forward
     
-    # More lenient thresholds for head position
-    if score >= 85:
+    # Adjusted thresholds for head position to match power metric strictness
+    if score >= 90:
         return (10, "excellent")
-    elif score >= 75:
+    elif score >= 80:
         return (9, "very good")
-    elif score >= 65:
+    elif score >= 70:
         return (8, "good")
-    elif score >= 55:
+    elif score >= 60:
         return (7, "fair")
-    elif score >= 45:
+    elif score >= 50:
         return (6, "poor")
-    elif score >= 35:
+    elif score >= 40:
         return (4, "very poor")
     else:
         return (2, "minimal")
@@ -367,19 +369,20 @@ def score_body_stability(stability_data: Dict[str, Any]) -> Tuple[int, str]:
     consistency = stability_data.get("movement_consistency", 0.0)
     
     # Use stability score as primary, consistency as secondary
-    score = (stability_score * 0.7) + (consistency * 0.3)
+    # Convert to 0-100 scale to match other metrics, then apply stricter thresholds
+    score = ((stability_score * 0.7) + (consistency * 0.3)) * 100
     
-    if score >= 0.9:
+    if score >= 90:
         return (10, "excellent")
-    elif score >= 0.8:
+    elif score >= 80:
         return (9, "very good")
-    elif score >= 0.7:
+    elif score >= 70:
         return (8, "good")
-    elif score >= 0.6:
+    elif score >= 60:
         return (7, "fair")
-    elif score >= 0.5:
+    elif score >= 50:
         return (6, "poor")
-    elif score >= 0.3:
+    elif score >= 40:
         return (4, "very poor")
     else:
         return (2, "minimal")
@@ -623,16 +626,11 @@ def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
     adjusted_power_score = apply_age_adjustment(raw_power_score, age_group)
     adjusted_form_score = apply_age_adjustment(raw_form_score, age_group)
     
-    # Overall score (70% power + 30% form) with age adjustment
-    overall_score = (adjusted_power_score * 0.70) + (adjusted_form_score * 0.30)
-    
     # Apply minimum score floor (1.0/10) to prevent discouraging scores
-    overall_score = max(overall_score, 1.0)
     adjusted_power_score = max(adjusted_power_score, 1.0)
     adjusted_form_score = max(adjusted_form_score, 1.0)
     
-    # Store scores (both raw and adjusted)
-    result["overall_score"] = round(overall_score, 1)
+    # Store scores (both raw and adjusted) - removed overall_score
     result["power_score"] = round(adjusted_power_score, 1)
     result["form_score"] = round(adjusted_form_score, 1)
     result["raw_power_score"] = round(raw_power_score, 1)
@@ -688,18 +686,6 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
         curve_info = " (no curve - high school/college level)"
     
     age_line = f"**Age Group:** {age_category}{curve_info}"
-    
-    # Calculate overall performance across all shots
-    overall_scores = []
-    for shot in shots:
-        validated = validate_shot_data(shot)
-        overall_scores.append(validated['overall_score'])
-    
-    if overall_scores:
-        avg_overall = sum(overall_scores) / len(overall_scores)
-        overall_line = f"**Overall Performance:** {avg_overall:.1f}/10"
-    else:
-        overall_line = "**Overall Performance:** N/A"
     
     # Format each shot with new power vs form structure
     shot_lines = []
@@ -777,7 +763,7 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
         
         shot_lines.append(shot_block)
     
-    return timestamp_line + "\n\n" + age_line + "\n" + overall_line + "\n\n" + "\n\n".join(shot_lines)
+    return timestamp_line + "\n\n" + age_line + "\n\n" + "\n\n".join(shot_lines)
 
 
 # All formatting done locally with deterministic heuristics

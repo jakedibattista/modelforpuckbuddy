@@ -205,7 +205,7 @@ def _summarize_metrics(raw: Dict[str, Any]) -> Tuple[List[str], List[str]]:
     return ww[:3], wt[:3]
 
 
-def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite-latest") -> str:
+def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.0-flash-lite") -> str:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError("GOOGLE_API_KEY not set")
@@ -213,7 +213,7 @@ def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite-l
 
     # Produce rule-based draft to ensure accuracy
     ww, wt = _summarize_metrics(raw)
-    draft = "**What went well:**\n" + "\n".join(f"- {b}" for b in ww) + "\n\n" + "**What to work on:**\n" + "\n".join(f"- {b}" for b in wt)
+    draft = "**What went well:**\n" + "\n".join(f"• {b}" for b in ww) + "\n\n" + "**What to work on:**\n" + "\n".join(f"• {b}" for b in wt)
 
     system = (
         "You are Seth, an assistant hockey coach texting feedback after practice. Rewrite the DRAFT to sound like authentic coaching messages.\n\n"
@@ -236,6 +236,8 @@ def generate_sections(raw: Dict[str, Any], model: str = "gemini-2.5-flash-lite-l
         "✅ 'Really smooth setup at 00:15 - tempo looked solid'\n"
         "❌ 'Excellent head positioning demonstrates strong fundamentals'\n"
         "❌ 'Continue to work on improving your technique'\n\n"
+        
+        "FORMAT: Use bullet points (•) not dashes (-) for all feedback items.\n\n"
         
         "Technical knowledge (unchanged from draft):\n"
         "- Front knee: Lower degrees = better (90-110° ideal)\n"

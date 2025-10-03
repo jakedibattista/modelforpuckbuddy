@@ -20,7 +20,8 @@ import os
 import sys
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
+import logging
 
 try:
     from google import genai
@@ -31,6 +32,215 @@ except ImportError as exc:
         "Install with: pip install google-genai"
     ) from exc
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
+
+# Elite NHL Players Database - 25 distinct shooting styles mapped to biomechanical attributes
+# Each player profile maps to specific metrics from pose analysis
+NHL_PLAYER_PROFILES = {
+    "alex_ovechkin": {
+        "name": "Alex Ovechkin",
+        "primary_strength": "One-timer power from the circle",
+        "key_mechanics": "Explosive hip rotation, perfect weight transfer, wide base",
+        "best_for": ["hip_rotation", "weight_transfer", "power_generation"],
+        "signature_move": "The Ovi spot one-timer - opens hips fully to the net",
+        "era": "Current"
+    },
+    "auston_matthews": {
+        "name": "Auston Matthews",
+        "primary_strength": "Quick release wrist shot",
+        "key_mechanics": "Minimal windup, exceptional wrist extension, tight puck control",
+        "best_for": ["wrist_extension", "quick_release", "head_position"],
+        "signature_move": "Ultra-fast wrist shot with disguised release point",
+        "era": "Current"
+    },
+    "connor_mcdavid": {
+        "name": "Connor McDavid",
+        "primary_strength": "Lightning-fast shot in motion",
+        "key_mechanics": "Maintains balance at high speed, quick hands, excellent body control",
+        "best_for": ["body_stability", "quick_release", "in_stride_shooting"],
+        "signature_move": "Full-speed snapshot with perfect balance",
+        "era": "Current"
+    },
+    "sidney_crosby": {
+        "name": "Sidney Crosby",
+        "primary_strength": "Accurate shots from any angle",
+        "key_mechanics": "Head always up, reads goalies, deceptive release",
+        "best_for": ["head_position", "accuracy", "deceptive_release"],
+        "signature_move": "Backhand roof shot - keeps head up, picks corners",
+        "era": "Current"
+    },
+    "steven_stamkos": {
+        "name": "Steven Stamkos",
+        "primary_strength": "Perfect one-timer timing",
+        "key_mechanics": "Wide stance, perfect weight shift, follows through completely",
+        "best_for": ["weight_transfer", "follow_through", "one_timer_mechanics"],
+        "signature_move": "PP one-timer - loads weight on back leg, explodes through puck",
+        "era": "Current"
+    },
+    "patrick_kane": {
+        "name": "Patrick Kane",
+        "primary_strength": "Deceptive release angles",
+        "key_mechanics": "Constantly changes shot angle, exceptional wrist flexibility",
+        "best_for": ["wrist_extension", "deceptive_release", "quick_hands"],
+        "signature_move": "Changes angle mid-shot, goalies never set",
+        "era": "Current"
+    },
+    "nathan_mackinnon": {
+        "name": "Nathan MacKinnon",
+        "primary_strength": "Power shot off the rush",
+        "key_mechanics": "Drives through puck with full body, explosive hip turn",
+        "best_for": ["hip_rotation", "power_generation", "torso_rotation"],
+        "signature_move": "Rushes wide, cuts to middle, rips shot far side",
+        "era": "Current"
+    },
+    "cale_makar": {
+        "name": "Cale Makar",
+        "primary_strength": "Accurate shot while skating",
+        "key_mechanics": "Perfect balance on edges, keeps upper body stable",
+        "best_for": ["body_stability", "knee_bend", "in_stride_shooting"],
+        "signature_move": "Skates laterally, maintains balance, picks corners",
+        "era": "Current"
+    },
+    "joe_pavelski": {
+        "name": "Joe Pavelski",
+        "primary_strength": "Net-front tips and quick release",
+        "key_mechanics": "Quick hands in tight, exceptional eye-hand coordination",
+        "best_for": ["quick_release", "hand_positioning", "net_front_play"],
+        "signature_move": "Deflections and tips - incredible hand-eye",
+        "era": "Current"
+    },
+    "mark_stone": {
+        "name": "Mark Stone",
+        "primary_strength": "Surgical precision placement",
+        "key_mechanics": "Patient release, picks spots, head always tracking goalie",
+        "best_for": ["head_position", "accuracy", "shot_placement"],
+        "signature_move": "Waits for goalie to move, places shot in opening",
+        "era": "Current"
+    },
+    "brad_marchand": {
+        "name": "Brad Marchand",
+        "primary_strength": "Quick snapshot in stride",
+        "key_mechanics": "Minimal windup, shoots while moving, great balance",
+        "best_for": ["quick_release", "body_stability", "in_stride_shooting"],
+        "signature_move": "Snap shot off the rush without breaking stride",
+        "era": "Current"
+    },
+    "leon_draisaitl": {
+        "name": "Leon Draisaitl",
+        "primary_strength": "Deceptive one-timer angles",
+        "key_mechanics": "Changes angle at last second, powerful lower body",
+        "best_for": ["deceptive_release", "weight_transfer", "one_timer_mechanics"],
+        "signature_move": "One-timer from unexpected angles",
+        "era": "Current"
+    },
+    "kirill_kaprizov": {
+        "name": "Kirill Kaprizov",
+        "primary_strength": "Creative shot angles",
+        "key_mechanics": "Exceptional flexibility, can shoot from any position",
+        "best_for": ["wrist_extension", "deceptive_release", "creativity"],
+        "signature_move": "Finds shooting lanes no one else sees",
+        "era": "Current"
+    },
+    "wayne_gretzky": {
+        "name": "Wayne Gretzky",
+        "primary_strength": "Perfect shot placement and timing",
+        "key_mechanics": "Head always up reading play, patient release",
+        "best_for": ["head_position", "accuracy", "shot_placement"],
+        "signature_move": "Never rushed, always picked the perfect spot",
+        "era": "Legend"
+    },
+    "mario_lemieux": {
+        "name": "Mario Lemieux",
+        "primary_strength": "Power and finesse combined",
+        "key_mechanics": "Long reach, powerful wrists, could shoot from anywhere",
+        "best_for": ["wrist_extension", "power_generation", "versatility"],
+        "signature_move": "One-hand shots, backhand snipes, unstoppable",
+        "era": "Legend"
+    },
+    "brett_hull": {
+        "name": "Brett Hull",
+        "primary_strength": "One-timer specialist",
+        "key_mechanics": "Perfect weight shift, followed through completely",
+        "best_for": ["weight_transfer", "follow_through", "one_timer_mechanics"],
+        "signature_move": "Set up in slot, one-timer top corner",
+        "era": "Legend"
+    },
+    "pavel_datsyuk": {
+        "name": "Pavel Datsyuk",
+        "primary_strength": "Master of deception",
+        "key_mechanics": "Constantly fakes, incredible hands, deceives goalies",
+        "best_for": ["deceptive_release", "wrist_extension", "creativity"],
+        "signature_move": "Makes goalies commit, shoots opposite direction",
+        "era": "Legend"
+    },
+    "teemu_selanne": {
+        "name": "Teemu Selänne",
+        "primary_strength": "Shot off the rush",
+        "key_mechanics": "Maintained speed, quick release, perfect balance",
+        "best_for": ["in_stride_shooting", "quick_release", "body_stability"],
+        "signature_move": "Full-speed wrist shot while cutting to net",
+        "era": "Legend"
+    },
+    "mike_bossy": {
+        "name": "Mike Bossy",
+        "primary_strength": "Pure goal scorer's shot",
+        "key_mechanics": "Quick release, perfect follow-through, always on target",
+        "best_for": ["quick_release", "follow_through", "accuracy"],
+        "signature_move": "Fastest release of his era, unstoppable in close",
+        "era": "Legend"
+    },
+    "al_macinnis": {
+        "name": "Al MacInnis",
+        "primary_strength": "Hardest slap shot ever",
+        "key_mechanics": "Full extension, explosive hip drive, perfect weight transfer",
+        "best_for": ["power_generation", "weight_transfer", "back_leg_drive"],
+        "signature_move": "Point shot that injured goalies",
+        "era": "Legend"
+    },
+    "peter_forsberg": {
+        "name": "Peter Forsberg",
+        "primary_strength": "Power and balance combined",
+        "key_mechanics": "Low knee bend, explosive through contact, strong base",
+        "best_for": ["knee_bend", "body_stability", "power_generation"],
+        "signature_move": "Could shoot while being checked, incredible balance",
+        "era": "Legend"
+    },
+    "pavel_bure": {
+        "name": "Pavel Bure",
+        "primary_strength": "Speed shot specialist",
+        "key_mechanics": "Shot at maximum speed, no windup needed",
+        "best_for": ["quick_release", "in_stride_shooting", "minimal_windup"],
+        "signature_move": "Breakaway specialist - shot while at top speed",
+        "era": "Legend"
+    },
+    "jaromir_jagr": {
+        "name": "Jaromír Jágr",
+        "primary_strength": "Shield and shoot technique",
+        "key_mechanics": "Powerful lower body, protected puck, quick release",
+        "best_for": ["body_stability", "knee_bend", "puck_protection"],
+        "signature_move": "Used body to shield, then quick wrister",
+        "era": "Legend"
+    },
+    "alexander_mogilny": {
+        "name": "Alexander Mogilny",
+        "primary_strength": "Pure shooting talent",
+        "key_mechanics": "Quick hands, accurate, could score from anywhere",
+        "best_for": ["wrist_extension", "quick_release", "versatility"],
+        "signature_move": "Lightning-fast wrist shot, goalies had no chance",
+        "era": "Legend"
+    },
+    "luc_robitaille": {
+        "name": "Luc Robitaille",
+        "primary_strength": "Net-front specialist",
+        "key_mechanics": "Found soft areas, quick release in traffic",
+        "best_for": ["net_front_play", "quick_release", "positioning"],
+        "signature_move": "Always in right spot, quick shot before goalie set",
+        "era": "Legend"
+    }
+}
+
 
 class OpenIceAgent:
     """
@@ -38,6 +248,12 @@ class OpenIceAgent:
     
     Uses Gemini's chat capabilities with Google Search integration to provide
     intelligent, context-aware responses about hockey technique.
+    
+    Features:
+    - Context management for long conversations
+    - Message summarization to prevent token limit issues
+    - Session persistence and memory optimization
+    - Error recovery for complex chat sessions
     """
     
     def __init__(self, api_key: Optional[str] = None):
@@ -49,6 +265,242 @@ class OpenIceAgent:
         self.client = genai.Client(api_key=self.api_key)
         self.chat_sessions: Dict[str, Any] = {}
         
+        # Context management settings
+        self.max_context_messages = 10  # Keep last 10 messages in context
+        self.max_tokens_per_request = 8000  # Conservative token limit
+        self.summarization_threshold = 15  # Summarize when > 15 messages
+        
+        # Error handling settings
+        self.max_retries = 3
+        self.retry_delay = 2.0  # seconds
+    
+    def _analyze_shooting_strengths_weaknesses(self, analysis_data: str) -> Dict[str, List[str]]:
+        """Extract strengths and weaknesses from analysis data."""
+        strengths = []
+        weaknesses = []
+        
+        # Parse analysis data to identify key metrics
+        analysis_lower = analysis_data.lower()
+        
+        # Check for good scores/categories (strengths)
+        if any(term in analysis_lower for term in ["excellent", "very good", "good"]):
+            if "hip rotation" in analysis_lower and any(x in analysis_lower for x in ["excellent", "good"]):
+                strengths.append("hip_rotation")
+            if "wrist extension" in analysis_lower and any(x in analysis_lower for x in ["excellent", "good"]):
+                strengths.append("wrist_extension")
+            if "head position" in analysis_lower and any(x in analysis_lower for x in ["excellent", "good"]):
+                strengths.append("head_position")
+            if "body stability" in analysis_lower and any(x in analysis_lower for x in ["excellent", "good"]):
+                strengths.append("body_stability")
+            if "weight transfer" in analysis_lower and any(x in analysis_lower for x in ["excellent", "good"]):
+                strengths.append("weight_transfer")
+            if "knee bend" in analysis_lower and ("excellent" in analysis_lower or "good bend" in analysis_lower):
+                strengths.append("knee_bend")
+        
+        # Check for poor scores/categories (weaknesses)
+        if any(term in analysis_lower for term in ["needs work", "poor", "fair", "minimal"]):
+            if "hip rotation" in analysis_lower and any(x in analysis_lower for x in ["needs work", "poor", "fair"]):
+                weaknesses.append("hip_rotation")
+            if "wrist" in analysis_lower and any(x in analysis_lower for x in ["needs work", "poor", "fair"]):
+                weaknesses.append("wrist_extension")
+            if "head" in analysis_lower and any(x in analysis_lower for x in ["needs work", "poor", "dropped"]):
+                weaknesses.append("head_position")
+            if "stability" in analysis_lower and any(x in analysis_lower for x in ["poor", "needs work"]):
+                weaknesses.append("body_stability")
+            if "weight transfer" in analysis_lower and any(x in analysis_lower for x in ["poor", "needs work"]):
+                weaknesses.append("weight_transfer")
+            if "knee" in analysis_lower and any(x in analysis_lower for x in ["too straight", "shallow", "needs work"]):
+                weaknesses.append("knee_bend")
+            if "follow through" in analysis_lower and any(x in analysis_lower for x in ["rushed", "poor"]):
+                weaknesses.append("follow_through")
+        
+        return {"strengths": strengths, "weaknesses": weaknesses}
+    
+    def _match_players_to_profile(self, strengths: List[str], weaknesses: List[str]) -> str:
+        """Match NHL players to user's specific strengths and weaknesses."""
+        matched_players = []
+        
+        # Priority 1: Match players who excel in user's weakness areas (players to learn from)
+        weakness_matches = []
+        for player_id, profile in NHL_PLAYER_PROFILES.items():
+            for weakness in weaknesses:
+                if weakness in profile["best_for"]:
+                    weakness_matches.append({
+                        "player": profile["name"],
+                        "reason": f"Work on {weakness.replace('_', ' ')} - {profile['primary_strength']}",
+                        "technique": profile["key_mechanics"],
+                        "signature": profile["signature_move"],
+                        "priority": "improve"
+                    })
+                    break  # Only add each player once
+        
+        # Priority 2: Match players who share user's strengths (validation/style match)
+        strength_matches = []
+        for player_id, profile in NHL_PLAYER_PROFILES.items():
+            for strength in strengths:
+                if strength in profile["best_for"]:
+                    strength_matches.append({
+                        "player": profile["name"],
+                        "reason": f"Similar strength in {strength.replace('_', ' ')} - {profile['primary_strength']}",
+                        "technique": profile["key_mechanics"],
+                        "signature": profile["signature_move"],
+                        "priority": "model"
+                    })
+                    break  # Only add each player once
+        
+        # Build recommendation text
+        recommendations = []
+        
+        # Add weakness-focused players (up to 2)
+        if weakness_matches:
+            recommendations.append("**PLAYERS TO STUDY (Areas to Improve):**")
+            for i, match in enumerate(weakness_matches[:2], 1):
+                recommendations.append(
+                    f"{i}. **{match['player']}** - {match['reason']}\n"
+                    f"   • Key mechanics: {match['technique']}\n"
+                    f"   • Signature move: {match['signature']}"
+                )
+        
+        # Add strength-matched players (up to 1)
+        if strength_matches:
+            recommendations.append("\n**PLAYERS WITH SIMILAR STRENGTHS (Your Style):**")
+            match = strength_matches[0]  # Just show the best match
+            recommendations.append(
+                f"• **{match['player']}** - {match['reason']}\n"
+                f"  Key mechanics: {match['technique']}"
+            )
+        
+        # Fallback if no matches found
+        if not recommendations:
+            recommendations.append(
+                "**VERSATILE PLAYERS TO STUDY:**\n"
+                "• **Sidney Crosby** - All-around excellence, head always up\n"
+                "• **Auston Matthews** - Quick release fundamentals\n"
+                "• **Connor McDavid** - Balance and body control"
+            )
+        
+        return "\n".join(recommendations)
+    
+    def _get_player_recommendations(self, analysis_data: str) -> str:
+        """Generate intelligent player recommendations based on analysis data."""
+        # Analyze the user's shooting profile
+        profile = self._analyze_shooting_strengths_weaknesses(analysis_data)
+        
+        # Match players to their profile
+        player_matches = self._match_players_to_profile(
+            profile["strengths"], 
+            profile["weaknesses"]
+        )
+        
+        return f"""
+NHL PLAYER RECOMMENDATIONS (Matched to Your Profile):
+
+{player_matches}
+
+COACHING APPROACH:
+- When user asks about player comparisons, reference the players above
+- Explain SPECIFIC techniques from these players that match their needs
+- Focus on players in "Areas to Improve" for development advice
+- Reference "Similar Strengths" players to validate what they're doing well
+- Always explain WHY that player's technique would help them
+
+Example: "Your wrist extension needs work - study Auston Matthews' technique: he keeps minimal windup and uses exceptional wrist snap. Notice how he keeps the puck close and uses his bottom hand to generate power through wrist roll."
+"""
+    
+    def _estimate_tokens(self, text: str) -> int:
+        """Rough estimation of token count (1 token ≈ 4 characters)."""
+        return len(text) // 4
+    
+    def _summarize_conversation_history(self, messages: List[Dict[str, Any]]) -> str:
+        """Summarize old conversation history to maintain context without token overflow."""
+        if not messages:
+            return ""
+        
+        # Extract key points from conversation
+        key_points = []
+        for msg in messages:
+            if msg.get('role') == 'user':
+                key_points.append(f"User asked: {msg.get('content', '')[:100]}...")
+            elif msg.get('role') == 'assistant':
+                key_points.append(f"Coach advised: {msg.get('content', '')[:100]}...")
+        
+        summary = "Previous conversation highlights:\n" + "\n".join(key_points[-5:])  # Last 5 exchanges
+        return summary
+    
+    def _manage_context(self, session: Dict[str, Any]) -> bool:
+        """Manage conversation context to prevent token limit issues."""
+        try:
+            # Check if we need to summarize
+            message_count = session.get('message_count', 0)
+            if message_count < self.summarization_threshold:
+                return True
+            
+            # Get current chat history
+            chat = session['chat']
+            
+            # Create a new chat session with summarized context
+            logger.info(f"Summarizing conversation for session {session.get('session_id', 'unknown')}")
+            
+            # Get conversation summary
+            summary_prompt = """Please provide a concise summary of our conversation so far, focusing on:
+1. The main shooting issues we've discussed
+2. Key advice given
+3. Current focus areas for improvement
+4. Any NHL players mentioned as references
+
+Keep it under 200 words and maintain the coaching context."""
+            
+            try:
+                summary_response = chat.send_message(summary_prompt)
+                conversation_summary = summary_response.text.strip()
+            except Exception as e:
+                logger.warning(f"Failed to get conversation summary: {e}")
+                conversation_summary = "Previous conversation covered shooting technique improvements."
+            
+            # Get fresh player recommendations for context reset
+            player_recommendations = self._get_player_recommendations(session['analysis_data'])
+            
+            # Create optimized new chat with summarized context
+            new_system_prompt = f"""You are OpenIce, a direct hockey shooting coach. Give specific, actionable feedback under 150 words.
+
+PLAYER DATA:
+{session['analysis_data']}
+
+CONTEXT: {conversation_summary}
+
+{player_recommendations}
+
+RULES: Cite specific scores/timestamps. One improvement area. Specific drills only.
+STYLE: Direct + encouraging. Data-driven.
+Be specific, be brief, be helpful.
+"""
+            
+            # Create new chat session
+            new_chat = self.client.chats.create(
+                model='gemini-2.0-flash-exp-001',
+                config=types.GenerateContentConfig(
+                    tools=[{"google_search": {}}],
+                    max_output_tokens=10000,
+                    temperature=0.4,
+                    top_p=0.8
+                )
+            )
+            
+            # Initialize with new context
+            new_chat.send_message(new_system_prompt)
+            
+            # Update session with new chat
+            session['chat'] = new_chat
+            session['message_count'] = 0  # Reset counter
+            session['last_activity'] = datetime.now()
+            
+            logger.info("Successfully created new chat context")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to manage context: {e}")
+            return False
+    
     def create_chat_session(self, analysis_data: str, user_id: str = "anonymous") -> str:
         """
         Create a new chat session with technical analysis data as context.
@@ -62,49 +514,38 @@ class OpenIceAgent:
         """
         session_id = str(uuid.uuid4())
         
-        # Create the initial system prompt with analysis context
-        system_prompt = f"""You are OpenIce, a direct hockey shooting coach who gives specific, actionable feedback.
+        # Get intelligent player recommendations based on analysis
+        player_recommendations = self._get_player_recommendations(analysis_data)
+        
+        # Create optimized system prompt with analysis context
+        system_prompt = f"""You are OpenIce, a direct hockey shooting coach. Give specific, actionable feedback under 150 words.
 
-PLAYER'S SHOOTING SESSION DATA:
+PLAYER DATA:
 {analysis_data}
 
-RESPONSE RULES:
-1. ALWAYS reference specific data points from their session (scores, timestamps, angles)
-2. Keep responses under 150 words - be concise and actionable
-3. Focus on ONE main improvement area per response unless asked for multiple
-4. Use their exact scores/categories when giving feedback
-5. Give specific drills or techniques, not general advice
+{player_recommendations}
 
-COACHING STYLE:
-- Direct but encouraging ("Your 72/100 head position needs work" not "head position could be better")
-- Data-driven ("At 00:08 your knee was 95° - aim for 100-110° for more power")
-- Actionable ("Try the wall drill: stand 6 inches from wall, practice keeping head up")
-- Personal ("YOUR shot at 00:15 vs shot at 00:08")
+RULES:
+1. Always cite specific scores, timestamps, and angles from their data
+2. One main improvement area per response
+3. Give specific drills, not generic advice
 
-SCORE INTERPRETATION:
-- 80-100: excellent (celebrate it)
-- 60-79: good (minor tweaks)
-- Below 60: needs work (specific improvement)
+STYLE: Direct + encouraging ("Your 72/100 head position needs work at 00:08 - try the wall drill")
+SCORES: 80-100 excellent | 60-79 good | <60 needs work
 
-NHL COMPARISONS:
-Only mention pros when specifically relevant to their data and include what technique to copy.
-
-AVOID:
-- Generic advice ("practice makes perfect")
-- Long explanations of basic concepts
-- Multiple improvement areas in one response
-- Vague suggestions ("work on form")
+NHL COMPARISONS: Use matched players above. Explain WHAT technique to copy.
 
 Be specific, be brief, be helpful.
 """
 
         try:
             # Create chat session with Google Search enabled and optimized for concise responses
+            # Increased max_output_tokens to better support longer conversations
             chat = self.client.chats.create(
-                model='gemini-2.5-flash-latest',
+                model='gemini-flash-latest',
                 config=types.GenerateContentConfig(
                     tools=[{"google_search": {}}],
-                    max_output_tokens=1000,  # Limit to ~150 words for concise responses
+                    max_output_tokens=2000,  # Increased from 1000 to support longer, complex chats
                     temperature=0.3,        # Lower temperature for more focused responses
                     top_p=0.8              # More focused sampling for consistency
                 )
@@ -142,7 +583,7 @@ Be specific, be brief, be helpful.
     
     def ask_question(self, session_id: str, question: str) -> Dict[str, Any]:
         """
-        Ask a question in an existing chat session.
+        Ask a question in an existing chat session with context management.
         
         Args:
             session_id: Chat session identifier
@@ -155,14 +596,48 @@ Be specific, be brief, be helpful.
             raise ValueError(f"Chat session {session_id} not found")
         
         session = self.chat_sessions[session_id]
-        chat = session['chat']
         
         try:
+            # Manage context before processing the question
+            if not self._manage_context(session):
+                logger.warning("Context management failed, proceeding with current context")
+            
+            chat = session['chat']
+            
             # Enhance question with context hints for more focused responses
             enhanced_question = self._enhance_question_with_context(question, session)
             
-            # Send the enhanced question to the chat
-            response = chat.send_message(enhanced_question)
+            # Estimate token usage before sending
+            estimated_tokens = self._estimate_tokens(enhanced_question)
+            if estimated_tokens > self.max_tokens_per_request:
+                logger.warning(f"Question too long ({estimated_tokens} tokens), truncating")
+                enhanced_question = enhanced_question[:self.max_tokens_per_request * 4] + "..."
+            
+            # Send the enhanced question to the chat with enhanced retry logic
+            response = None
+            for attempt in range(self.max_retries):
+                try:
+                    response = chat.send_message(enhanced_question)
+                    break
+                except Exception as e:
+                    error_str = str(e).lower()
+                    logger.warning(f"Attempt {attempt + 1}/{self.max_retries} failed: {e}")
+                    
+                    if attempt == self.max_retries - 1:
+                        # Final attempt failed
+                        logger.error(f"All retry attempts failed for session {session_id}")
+                        raise RuntimeError(f"Failed to process question after {self.max_retries} attempts. This may be due to conversation length. Try starting a new session.") from e
+                    
+                    # Handle 500 errors and context issues by recreating the session
+                    if "500" in error_str or "context" in error_str or "limit" in error_str:
+                        logger.info(f"Detected context/500 error, attempting to manage context and retry")
+                        if not self._manage_context(session):
+                            logger.warning("Context management failed during retry")
+                        chat = session['chat']
+                    
+                    # Wait before retrying
+                    import time
+                    time.sleep(self.retry_delay * (attempt + 1))
             
             # Update session metadata
             session['last_activity'] = datetime.now()
@@ -195,7 +670,8 @@ Be specific, be brief, be helpful.
                         "That response was too long. Give me the same advice in under 150 words, focusing on just the most important point."
                     )
                     answer_text = shorter_response.text.strip()
-                except:
+                except Exception as e:
+                    logger.warning(f"Failed to shorten response: {e}")
                     # If shortening fails, use original response
                     pass
             
@@ -209,6 +685,16 @@ Be specific, be brief, be helpful.
             }
             
         except Exception as exc:
+            logger.error(f"Failed to process question for session {session_id}: {exc}")
+            # Try to recover by creating a fresh context
+            try:
+                logger.info("Attempting to recover session with fresh context")
+                if self._manage_context(session):
+                    # Retry once with fresh context
+                    return self.ask_question(session_id, question)
+            except Exception as recovery_exc:
+                logger.error(f"Recovery failed: {recovery_exc}")
+            
             raise RuntimeError(f"Failed to process question: {exc}") from exc
     
     def get_session_info(self, session_id: str) -> Dict[str, Any]:
@@ -222,7 +708,22 @@ Be specific, be brief, be helpful.
             'user_id': session['user_id'],
             'created_at': session['created_at'].isoformat(),
             'last_activity': session['last_activity'].isoformat(),
-            'message_count': session['message_count']
+            'message_count': session['message_count'],
+            'context_managed': session.get('message_count', 0) >= self.summarization_threshold
+        }
+    
+    def get_session_stats(self) -> Dict[str, Any]:
+        """Get statistics about all active sessions."""
+        total_sessions = len(self.chat_sessions)
+        total_messages = sum(session.get('message_count', 0) for session in self.chat_sessions.values())
+        long_conversations = sum(1 for session in self.chat_sessions.values() 
+                               if session.get('message_count', 0) >= self.summarization_threshold)
+        
+        return {
+            'total_sessions': total_sessions,
+            'total_messages': total_messages,
+            'long_conversations': long_conversations,
+            'average_messages_per_session': total_messages / total_sessions if total_sessions > 0 else 0
         }
     
     def cleanup_old_sessions(self, max_age_hours: int = 24) -> int:
@@ -234,9 +735,24 @@ Be specific, be brief, be helpful.
         ]
         
         for session_id in old_sessions:
-            del self.chat_sessions[session_id]
+            try:
+                # Log session stats before cleanup
+                session = self.chat_sessions[session_id]
+                logger.info(f"Cleaning up session {session_id}: {session.get('message_count', 0)} messages")
+                del self.chat_sessions[session_id]
+            except Exception as e:
+                logger.warning(f"Error cleaning up session {session_id}: {e}")
         
+        logger.info(f"Cleaned up {len(old_sessions)} old sessions")
         return len(old_sessions)
+    
+    def force_context_reset(self, session_id: str) -> bool:
+        """Force a context reset for a specific session."""
+        if session_id not in self.chat_sessions:
+            return False
+        
+        session = self.chat_sessions[session_id]
+        return self._manage_context(session)
 
 
 def parse_raw_pose_analysis(raw_analysis: Dict[str, Any]) -> str:

@@ -504,7 +504,8 @@ def create_app() -> Flask:
                 "search_queries": result.get("search_queries", []),
                 "sources": result.get("sources", []),
                 "session_id": session_id,
-                "message_count": result.get("message_count", 0)
+                "message_count": result.get("message_count", 0),
+                "word_count": result.get("word_count", 0)
             })
         except ValueError as exc:
             # Session not found
@@ -512,6 +513,56 @@ def create_app() -> Flask:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to process OpenIce chat")
             return jsonify({"error": "Failed to process chat message"}), 500
+    
+    @app.route("/api/openice/session/<session_id>", methods=["GET"])
+    def get_openice_session_info(session_id: str) -> tuple:
+        """Get information about an OpenIce chat session."""
+        try:
+            agent = get_openice_agent()
+            session_info = agent.get_session_info(session_id)
+            
+            return jsonify({
+                "success": True,
+                "session_info": session_info
+            })
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 404
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to get session info")
+            return jsonify({"error": "Failed to get session info"}), 500
+    
+    @app.route("/api/openice/stats", methods=["GET"])
+    def get_openice_stats() -> tuple:
+        """Get OpenIce agent statistics."""
+        try:
+            agent = get_openice_agent()
+            stats = agent.get_session_stats()
+            
+            return jsonify({
+                "success": True,
+                "stats": stats
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to get OpenIce stats")
+            return jsonify({"error": "Failed to get stats"}), 500
+    
+    @app.route("/api/openice/reset-context/<session_id>", methods=["POST"])
+    def reset_openice_context(session_id: str) -> tuple:
+        """Force a context reset for an OpenIce session."""
+        try:
+            agent = get_openice_agent()
+            success = agent.force_context_reset(session_id)
+            
+            if success:
+                return jsonify({
+                    "success": True,
+                    "message": "Context reset successfully"
+                })
+            else:
+                return jsonify({"error": "Session not found"}), 404
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to reset context")
+            return jsonify({"error": "Failed to reset context"}), 500
 
 
     # ------------------------------------------------------------------
