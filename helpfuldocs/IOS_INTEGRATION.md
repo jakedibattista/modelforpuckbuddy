@@ -33,7 +33,7 @@ class VideoAnalysisService: ObservableObject {
     @Published var dataAnalysis: String?
     @Published var error: String?
     
-    private let apiBase = "https://puck-buddy-model-22317830094.us-central1.run.app"
+    private let apiBase = "https://puck-buddy-model-7iv2gspkgq-uc.a.run.app"
     
     func analyzeVideo(_ videoURL: URL) async {
         isProcessing = true

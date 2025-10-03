@@ -15,7 +15,7 @@ Simple overview of how the hockey video analysis system works.
 ## System Components
 
 ### Backend API
-- **Location**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+- **Location**: `https://puck-buddy-model-7iv2gspkgq-uc.a.run.app`
 - **Purpose**: Handles video uploads and analysis requests
 - **Technology**: Python Flask on Google Cloud Run
 
@@ -25,9 +25,9 @@ Simple overview of how the hockey video analysis system works.
 - **Metrics**: Measures knee bend, hip drive, wrist movement, etc.
 
 ### AI Agents
-- **Data Summary Agent**: Converts pose data into readable summaries
-- **Seth Coaching Agent**: Provides technical coaching feedback
-- **OpenIce Agent**: Conversational AI for questions and tips
+- **Data Summary Agent**: Converts pose data into readable summaries with balanced scoring (stricter thresholds for form metrics)
+- **Seth Coaching Agent**: Provides technical coaching feedback with bullet points (•) and specific metrics
+- **OpenIce Agent**: Conversational AI with intelligent NHL player matching (25 players), robust error handling, and personalized recommendations
 
 ### Storage
 - **Firebase Storage**: Stores uploaded videos securely

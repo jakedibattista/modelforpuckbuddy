@@ -1,6 +1,6 @@
 # 🏒 PuckBuddy API Guide
 
-**Base URL**: `https://puck-buddy-model-22317830094.us-central1.run.app`
+**Base URL**: `https://puck-buddy-model-7iv2gspkgq-uc.a.run.app`
 
 ## Quick Start
 
@@ -139,9 +139,11 @@ POST /api/coach/seth
 {
   "success": true,
   "coach_id": "seth",
-  "coaching_feedback": "**What went well:**\n- Strong hip drive at 00:08\n\n**What to work on:**\n- Get lower on front knee bend"
+  "coaching_feedback": "**What went well:**\n• Strong hip drive at 00:08 (25.3°/sec rotation)\n• Excellent wrist follow-through at 00:11 (92/100)\n\n**What to work on:**\n• Get lower on front knee bend (currently 145°, aim for 90-120°)\n• Head position needs work - keep eyes on target"
 }
 ```
+
+**Note:** Seth now uses bullet points (•) for better readability and includes specific metrics from your analysis.
 
 ---
 
@@ -186,6 +188,20 @@ POST /api/openice/chat
 ```
 
 **Note:** The `/api/openice/*` endpoints are recommended over the legacy `/api/start-chat` and `/api/ask-question` endpoints as they provide immediate responses and better mobile app support.
+
+### 🆕 Enhanced OpenIce Features:
+- **Intelligent NHL Player Matching**: OpenIce analyzes your strengths and weaknesses to recommend 2-3 NHL players whose techniques would help you most
+- **Balanced Scoring**: More accurate power vs form breakdowns with stricter thresholds
+- **Robust Error Handling**: Handles long conversations with automatic context management
+- **25 Player Database**: From Wayne Gretzky to Connor McDavid, matched to your biomechanical profile
+
+**Example Response:**
+```json
+{
+  "session_id": "abc123",
+  "response": "Your hip rotation is strong (8/10), similar to Alex Ovechkin's explosive style. However, your head position needs work (4/10). I'd recommend studying Auston Matthews' technique - he excels at keeping his eyes on target throughout the shot. Try the 'Target Fixation Drill' before every shot."
+}
+```
 
 ---
 
