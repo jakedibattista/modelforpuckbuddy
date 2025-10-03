@@ -1,6 +1,38 @@
 steps:
+  # Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '--platform=linux/amd64', '-t', 'gcr.io/$PROJECT_ID/puck-buddy-model:latest', '.']
+  
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'puck-buddy-model'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/puck-buddy-model:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+  
+  # Display the service URL after deployment
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        echo "=========================================="
+        echo "🚀 DEPLOYMENT SUCCESSFUL!"
+        echo "=========================================="
+        echo "Service URL:"
+        gcloud run services describe puck-buddy-model --region=us-central1 --format="value(status.url)"
+        echo "=========================================="
+        echo "⚠️  UPDATE YOUR APP WITH THIS URL!"
+        echo "=========================================="
+
 images:
   - 'gcr.io/$PROJECT_ID/puck-buddy-model:latest'
 
