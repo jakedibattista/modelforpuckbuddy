@@ -118,7 +118,7 @@ def create_app() -> Flask:
         payload = request.get_json() or {}
         user_id = payload.get("user_id")
         storage_path = payload.get("storage_path")
-        age_group = payload.get("age_group", "16+")  # NEW: Accept age group parameter
+        age_group = payload.get("age_group", "17+")  # NEW: Accept age group parameter
         
         if not user_id or not storage_path:
             return jsonify({"error": "user_id and storage_path are required"}), 400

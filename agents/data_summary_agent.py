@@ -555,13 +555,13 @@ def apply_age_adjustment(score: float, age_group: str) -> float:
     
     Args:
         score: Raw score (1-10)
-        age_group: Age group from app ("7-9", "10-12", "13-16", "16+")
+        age_group: Age group from app ("7-9", "10-12", "13-16", "17+")
         
     Returns:
         Adjusted score based on age group
     """
-    if age_group == "16+":
-        # 16+ years: Score as-is (high school/college level)
+    if age_group == "17+":
+        # 17+ years: Score as-is (high school/college level) - no curve
         return score
     elif age_group == "13-16":
         # 13-16 years: Slight curve (10% boost)
@@ -573,20 +573,20 @@ def apply_age_adjustment(score: float, age_group: str) -> float:
         # 7-9 years: Strong curve (30% boost)
         return min(10.0, score * 1.3)
     else:
-        # Default to 16+ if unknown age group
+        # Default to 17+ if unknown age group
         return score
 
 def get_age_category(age_group: str) -> str:
     """Get age category description.
     
     Args:
-        age_group: Age group from app ("7-9", "10-12", "13-16", "16+")
+        age_group: Age group from app ("7-9", "10-12", "13-16", "17+")
         
     Returns:
         Age category string
     """
-    if age_group == "16+":
-        return "High School/College (16+)"
+    if age_group == "17+":
+        return "High School/College (17+)"
     elif age_group == "13-16":
         return "U16 (13-16 years)"
     elif age_group == "10-12":
@@ -611,8 +611,8 @@ def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
     result["time"] = shot.get("shot_time_sec", "N/A")
     result["time_formatted"] = format_timestamp(result["time"])
     
-    # Get age group for adjustments (default to "16+" if not provided)
-    age_group = shot.get("age_group", "16+")
+    # Get age group for adjustments (default to "17+" if not provided)
+    age_group = shot.get("age_group", "17+")
     result["age_group"] = age_group
     result["age_category"] = get_age_category(age_group)
     

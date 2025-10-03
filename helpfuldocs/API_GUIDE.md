@@ -53,7 +53,7 @@ POST /api/analyze-video
 {
   "user_id": "user123", 
   "storage_path": "users/user123/20240315_143022_video.mov",
-  "age_group": "10-12"  // Optional: "7-9", "10-12", "13-16", "16+" (default: "16+")
+  "age_group": "10-12"  // Optional: "7-9", "10-12", "13-16", "17+" (default: "17+")
 }
 ```
 
@@ -62,7 +62,7 @@ POST /api/analyze-video
 {
   "success": true,
   "analysis": {
-    "data_analysis": "**Shots detected at timestamps:** 00:05, 00:11\n\n**Shot 1: 00:05:**\n**Age Group:** High School/College (16+)\n\n**RAW PERFORMANCE:**\nPower: 3.8/10, Form: 2.8/10\n\n**COACHING SCORE (High School/College (16+) adjusted):**\nPower: 3.8/10, Form: 2.8/10\nOverall: 3.5/10",
+    "data_analysis": "**Shots detected at timestamps:** 00:05, 00:11\n\n**Shot 1: 00:05:**\n**Age Group:** High School/College (17+)\n\n**RAW PERFORMANCE:**\nPower: 3.8/10, Form: 2.8/10\n\n**COACHING SCORE (High School/College (17+) adjusted):**\nPower: 3.8/10, Form: 2.8/10\nOverall: 3.5/10",
     "shots_detected": 2,
     "video_duration": 14.9,
     "video_size_mb": 7.6,
@@ -73,7 +73,7 @@ POST /api/analyze-video
       "shots": [
         {
           "shot_time_sec": 4.533,
-          "age_group": "16+",
+          "age_group": "17+",
           "front_knee_bend_deg": 151.9,
           "hip_rotation_power": {
             "max_rotation_speed": 3.5,
