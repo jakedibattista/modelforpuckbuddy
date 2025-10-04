@@ -127,6 +127,62 @@ def create_app() -> Flask:
             "rate_limits_bypassed": is_admin
         })
 
+    @app.route("/api/admin/test-gemini", methods=["POST"])
+    def test_gemini_models() -> tuple:
+        """Test Gemini API key and list available models."""
+        payload = request.get_json() or {}
+        user_id = payload.get("user_id")
+        
+        # Only allow admin users to test this
+        if user_id not in ADMIN_USERS:
+            return jsonify({"error": "Admin access required"}), 403
+        
+        try:
+            import google.generativeai as genai
+            
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                return jsonify({
+                    "success": False,
+                    "error": "GOOGLE_API_KEY not configured",
+                    "api_key_present": False
+                }), 500
+            
+            genai.configure(api_key=api_key)
+            models = genai.list_models()
+            
+            # Get Gemini models
+            gemini_models = [m.name for m in models if 'gemini' in m.name.lower()]
+            
+            # Test specific models we're trying to use
+            target_models = [
+                'models/gemini-2.0-flash-lite',
+                'models/gemini-2.0-flash-exp', 
+                'models/gemini-flash-latest',
+                'models/gemini-2.5-flash-lite-latest'
+            ]
+            
+            model_status = {}
+            for target in target_models:
+                model_status[target] = target in gemini_models
+            
+            return jsonify({
+                "success": True,
+                "api_key_present": True,
+                "api_key_prefix": api_key[:10] + "...",
+                "total_gemini_models": len(gemini_models),
+                "gemini_models": gemini_models[:20],  # First 20 models
+                "target_model_status": model_status
+            })
+            
+        except Exception as e:
+            logger.exception("Failed to test Gemini API")
+            return jsonify({
+                "success": False,
+                "error": str(e),
+                "api_key_present": bool(os.getenv("GOOGLE_API_KEY"))
+            }), 500
+
     @app.route("/api/upload-url", methods=["POST"])
     @limiter.limit("20 per hour")  # Allow more upload URL requests
     def generate_upload_url() -> tuple:
