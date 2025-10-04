@@ -254,6 +254,11 @@ def create_app() -> Flask:
                     from agents.data_summary_agent import format_shot_summary_locally
                     data_analysis = format_shot_summary_locally(analysis_results)
                     
+                    # Generate coach summary using Seth's technical feedback
+                    logger.info("Generating coach summary with Seth's technical analysis")
+                    from agents.seth_shooting_agent import generate_sections
+                    coach_summary = generate_sections(analysis_results)
+                    
                     logger.info("Full video analysis completed successfully")
                     
                     # Clean up any old completed jobs for this user to prevent accumulation
@@ -290,6 +295,7 @@ def create_app() -> Flask:
                         "analysis": {
                             "data_analysis": analysis_results,  # Complete structured data with age groups
                             "data_summary": data_analysis,  # Formatted text for display
+                            "coach_summary": coach_summary,  # Seth's technical coaching feedback
                             "shots_detected": len(shots),
                             "video_duration": video_duration,
                             "video_size_mb": round(video_size_mb, 1),
