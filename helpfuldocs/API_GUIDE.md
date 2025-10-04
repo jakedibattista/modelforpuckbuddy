@@ -189,17 +189,69 @@ POST /api/openice/chat
 
 **Note:** The `/api/openice/*` endpoints are recommended over the legacy `/api/start-chat` and `/api/ask-question` endpoints as they provide immediate responses and better mobile app support.
 
-### 🆕 Enhanced OpenIce Features:
+### 🆕 Enhanced 2025 Features:
+- **Latest Gemini Models**: Using Gemini 2.5 Flash (chat) and 2.0 Flash-Lite (coaching) for optimal performance
 - **Intelligent NHL Player Matching**: OpenIce analyzes your strengths and weaknesses to recommend 2-3 NHL players whose techniques would help you most
 - **Balanced Scoring**: More accurate power vs form breakdowns with stricter thresholds
 - **Robust Error Handling**: Handles long conversations with automatic context management
 - **25 Player Database**: From Wayne Gretzky to Connor McDavid, matched to your biomechanical profile
+- **Age-Adjusted Scoring**: Individual metrics are adjusted based on age groups (7-9, 10-12, 13-16, 17+)
+- **Bullet Point Formatting**: Seth's coaching feedback now uses bullet points (•) for better readability
 
 **Example Response:**
 ```json
 {
   "session_id": "abc123",
   "response": "Your hip rotation is strong (8/10), similar to Alex Ovechkin's explosive style. However, your head position needs work (4/10). I'd recommend studying Auston Matthews' technique - he excels at keeping his eyes on target throughout the shot. Try the 'Target Fixation Drill' before every shot."
+}
+```
+
+---
+
+## Admin & Diagnostic Endpoints
+
+### Check Admin Status
+```bash
+POST /api/admin/status
+
+{
+  "user_id": "your_user_id"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "user_id": "your_user_id",
+  "is_admin": true,
+  "unlimited_access": true,
+  "rate_limits_bypassed": true
+}
+```
+
+### Test Gemini API & Models (Admin Only)
+```bash
+POST /api/admin/test-gemini
+
+{
+  "user_id": "admin_user_id"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "api_key_present": true,
+  "api_key_prefix": "AIzaSyAbc...",
+  "total_gemini_models": 15,
+  "gemini_models": ["models/gemini-2.5-flash", "models/gemini-2.0-flash-lite", ...],
+  "target_model_status": {
+    "models/gemini-2.5-flash": true,
+    "models/gemini-2.0-flash-lite": true,
+    "models/gemini-flash-latest": true
+  }
 }
 ```
 
@@ -253,6 +305,23 @@ const analysis = await fetch('YOUR_API_BASE/api/analyze-video', {
 | `POST /api/openice/init` | Start AI coaching chat | ~5 sec |
 | `POST /api/openice/chat` | Ask AI coaching questions | ~10 sec |
 | `GET /api/chat-info/{session_id}` | Get chat session info | instant |
+| `GET /api/openice/session/{session_id}` | Get OpenIce session details | instant |
+| `GET /api/openice/stats` | Get OpenIce usage statistics | instant |
+| `POST /api/openice/reset-context/{session_id}` | Reset chat context | instant |
+
+### Admin & Diagnostics
+| Endpoint | Purpose | Access |
+|----------|---------|--------|
+| `POST /api/admin/status` | Check admin privileges | Admin only |
+| `POST /api/admin/test-gemini` | Test Gemini API & models | Admin only |
+
+### Legacy Endpoints (Deprecated)
+| Endpoint | Status | Replacement |
+|----------|--------|-------------|
+| `POST /api/submit-video` | ⚠️ Legacy | Use `/api/analyze-video` |
+| `GET /api/results/{user_id}` | ⚠️ Legacy | Use `/api/analyze-video` |
+| `POST /api/start-chat` | ⚠️ Legacy | Use `/api/openice/init` |
+| `POST /api/ask-question` | ⚠️ Legacy | Use `/api/openice/chat` |
 
 ## Rate Limits & Security
 
