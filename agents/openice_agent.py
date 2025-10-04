@@ -477,7 +477,7 @@ Be specific, be brief, be helpful.
             
             # Create new chat session
             new_chat = self.client.chats.create(
-                model='gemini-2.0-flash-exp-001',
+                model='gemini-2.5-flash',
                 config=types.GenerateContentConfig(
                     tools=[{"google_search": {}}],
                     max_output_tokens=10000,

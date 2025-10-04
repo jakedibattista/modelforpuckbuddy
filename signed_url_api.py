@@ -157,9 +157,9 @@ def create_app() -> Flask:
             # Test specific models we're trying to use
             target_models = [
                 'models/gemini-2.0-flash-lite',
-                'models/gemini-2.0-flash-exp', 
+                'models/gemini-2.5-flash', 
                 'models/gemini-flash-latest',
-                'models/gemini-2.5-flash-lite-latest'
+                'models/gemini-2.5-flash-lite-preview-09-2025'
             ]
             
             model_status = {}
