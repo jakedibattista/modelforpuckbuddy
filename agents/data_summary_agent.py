@@ -316,6 +316,111 @@ def _get_wrist_category(score: float) -> str:
     else:
         return "minimal"
 
+def _get_knee_category(score: float) -> str:
+    """Get knee bend category."""
+    if score >= 9:
+        return "excellent"
+    elif score >= 8:
+        return "very good"
+    elif score >= 7:
+        return "good"
+    elif score >= 6:
+        return "fair"
+    elif score >= 4:
+        return "poor"
+    else:
+        return "minimal"
+
+def _get_hip_category(score: float) -> str:
+    """Get hip rotation category."""
+    if score >= 9:
+        return "excellent"
+    elif score >= 8:
+        return "very good"
+    elif score >= 7:
+        return "good"
+    elif score >= 6:
+        return "fair"
+    elif score >= 4:
+        return "poor"
+    else:
+        return "minimal"
+
+def _get_drive_category(score: float) -> str:
+    """Get back leg drive category."""
+    if score >= 9:
+        return "excellent"
+    elif score >= 8:
+        return "very good"
+    elif score >= 7:
+        return "good"
+    elif score >= 6:
+        return "fair"
+    elif score >= 4:
+        return "poor"
+    else:
+        return "minimal"
+
+def _get_transfer_category(score: float) -> str:
+    """Get weight transfer category."""
+    if score >= 9:
+        return "excellent"
+    elif score >= 8:
+        return "very good"
+    elif score >= 7:
+        return "good"
+    elif score >= 6:
+        return "fair"
+    elif score >= 4:
+        return "poor"
+    else:
+        return "minimal"
+
+def _get_torso_category(score: float) -> str:
+    """Get torso rotation category."""
+    if score >= 9:
+        return "excellent"
+    elif score >= 8:
+        return "very good"
+    elif score >= 7:
+        return "good"
+    elif score >= 6:
+        return "fair"
+    elif score >= 4:
+        return "poor"
+    else:
+        return "minimal"
+
+def _get_head_category(score: float) -> str:
+    """Get head position category."""
+    if score >= 9:
+        return "excellent"
+    elif score >= 8:
+        return "very good"
+    elif score >= 7:
+        return "good"
+    elif score >= 6:
+        return "fair"
+    elif score >= 4:
+        return "poor"
+    else:
+        return "minimal"
+
+def _get_stability_category(score: float) -> str:
+    """Get body stability category."""
+    if score >= 9:
+        return "excellent"
+    elif score >= 8:
+        return "very good"
+    elif score >= 7:
+        return "good"
+    elif score >= 6:
+        return "fair"
+    elif score >= 4:
+        return "poor"
+    else:
+        return "minimal"
+
 def score_head_position(head_data: Dict[str, Any]) -> Tuple[int, str]:
     """Score head position on 1-10 scale.
     
@@ -698,25 +803,43 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
         shot_block += f"**POWER BREAKDOWN:**\n"
         power_metrics = validated['power_metrics']
         
+        # Get age group for individual metric adjustments
+        age_group = validated['age_group']
+        
         # Front Knee Bend (15%)
         knee = power_metrics['front_knee']
-        shot_block += f"├── Front Knee: {knee['score']}/10 ({knee['category']}, {knee['angle']:.0f}°)\n"
+        raw_knee_score = knee['score']
+        adjusted_knee_score = apply_age_adjustment(raw_knee_score, age_group)
+        adjusted_knee_category = _get_knee_category(adjusted_knee_score)
+        shot_block += f"• Front Knee: {adjusted_knee_score:.1f}/10 ({adjusted_knee_category}, {knee['angle']:.0f}°)\n"
         
         # Hip Rotation Power (15%)
         hip = power_metrics['hip_rotation']
-        shot_block += f"├── Hip Rotation: {hip['score']}/10 ({hip['category']})\n"
+        raw_hip_score = hip['score']
+        adjusted_hip_score = apply_age_adjustment(raw_hip_score, age_group)
+        adjusted_hip_category = _get_hip_category(adjusted_hip_score)
+        shot_block += f"• Hip Rotation: {adjusted_hip_score:.1f}/10 ({adjusted_hip_category})\n"
         
         # Back Leg Drive (10%)
         drive = power_metrics['back_leg_drive']
-        shot_block += f"├── Back Leg Drive: {drive['score']}/10 ({drive['category']})\n"
+        raw_drive_score = drive['score']
+        adjusted_drive_score = apply_age_adjustment(raw_drive_score, age_group)
+        adjusted_drive_category = _get_drive_category(adjusted_drive_score)
+        shot_block += f"• Back Leg Drive: {adjusted_drive_score:.1f}/10 ({adjusted_drive_category})\n"
         
         # Weight Transfer (15%)
         transfer = power_metrics['weight_transfer']
-        shot_block += f"├── Weight Transfer: {transfer['score']}/10 ({transfer['category']})\n"
+        raw_transfer_score = transfer['score']
+        adjusted_transfer_score = apply_age_adjustment(raw_transfer_score, age_group)
+        adjusted_transfer_category = _get_transfer_category(adjusted_transfer_score)
+        shot_block += f"• Weight Transfer: {adjusted_transfer_score:.1f}/10 ({adjusted_transfer_category})\n"
         
         # Torso Rotation (15%)
         torso = power_metrics['torso_rotation']
-        shot_block += f"└── Torso Rotation: {torso['score']}/10 ({torso['category']})\n\n"
+        raw_torso_score = torso['score']
+        adjusted_torso_score = apply_age_adjustment(raw_torso_score, age_group)
+        adjusted_torso_category = _get_torso_category(adjusted_torso_score)
+        shot_block += f"• Torso Rotation: {adjusted_torso_score:.1f}/10 ({adjusted_torso_category})\n\n"
         
         # Form Metrics Breakdown
         shot_block += f"**FORM BREAKDOWN:**\n"
@@ -727,39 +850,47 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
         if wrist['tracked']:
             breakdown = wrist['breakdown']
             if breakdown['left_wrist']['tracked']:
-                left_score = breakdown['left_wrist']['score']
-                left_category = _get_wrist_category(left_score)
-                shot_block += f"├── Left Wrist Extension: {left_score}/10 ({left_category})\n"
+                raw_left_score = breakdown['left_wrist']['score']
+                adjusted_left_score = apply_age_adjustment(raw_left_score, age_group)
+                adjusted_left_category = _get_wrist_category(adjusted_left_score)
+                shot_block += f"• Left Wrist Extension: {adjusted_left_score:.1f}/10 ({adjusted_left_category})\n"
             else:
-                shot_block += f"├── Left Wrist Extension: Not tracked (insufficient data)\n"
+                shot_block += f"• Left Wrist Extension: Not tracked (insufficient data)\n"
         else:
-            shot_block += f"├── Left Wrist Extension: Not tracked (insufficient data)\n"
+            shot_block += f"• Left Wrist Extension: Not tracked (insufficient data)\n"
         
         # Right Wrist Extension (separate category)
         if wrist['tracked']:
             breakdown = wrist['breakdown']
             if breakdown['right_wrist']['tracked']:
-                right_score = breakdown['right_wrist']['score']
-                right_category = _get_wrist_category(right_score)
-                shot_block += f"├── Right Wrist Extension: {right_score}/10 ({right_category})\n"
+                raw_right_score = breakdown['right_wrist']['score']
+                adjusted_right_score = apply_age_adjustment(raw_right_score, age_group)
+                adjusted_right_category = _get_wrist_category(adjusted_right_score)
+                shot_block += f"• Right Wrist Extension: {adjusted_right_score:.1f}/10 ({adjusted_right_category})\n"
             else:
-                shot_block += f"├── Right Wrist Extension: Not tracked (insufficient data)\n"
+                shot_block += f"• Right Wrist Extension: Not tracked (insufficient data)\n"
         else:
-            shot_block += f"├── Right Wrist Extension: Not tracked (insufficient data)\n"
+            shot_block += f"• Right Wrist Extension: Not tracked (insufficient data)\n"
         
         # Head Position
         head = form_metrics['head_position']
         if head['tracked']:
-            shot_block += f"├── Head Position: {head['score']}/10 ({head['category']})\n"
+            raw_head_score = head['score']
+            adjusted_head_score = apply_age_adjustment(raw_head_score, age_group)
+            adjusted_head_category = _get_head_category(adjusted_head_score)
+            shot_block += f"• Head Position: {adjusted_head_score:.1f}/10 ({adjusted_head_category})\n"
         else:
-            shot_block += f"├── Head Position: Not tracked (insufficient data)\n"
+            shot_block += f"• Head Position: Not tracked (insufficient data)\n"
         
         # Body Stability
         stability = form_metrics['body_stability']
         if stability['tracked']:
-            shot_block += f"└── Body Stability: {stability['score']}/10 ({stability['category']})"
+            raw_stability_score = stability['score']
+            adjusted_stability_score = apply_age_adjustment(raw_stability_score, age_group)
+            adjusted_stability_category = _get_stability_category(adjusted_stability_score)
+            shot_block += f"• Body Stability: {adjusted_stability_score:.1f}/10 ({adjusted_stability_category})"
         else:
-            shot_block += f"└── Body Stability: Not tracked (insufficient data)"
+            shot_block += f"• Body Stability: Not tracked (insufficient data)"
         
         shot_lines.append(shot_block)
     
