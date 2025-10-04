@@ -1,38 +1,39 @@
 #!/usr/bin/env python3
-"""Data Summary Agent (Local formatting with deterministic heuristics)
+"""Data Summary Agent - Individual Metric Analysis and Age-Adjusted Scoring
 
-This agent:
-- Interprets the JSON output from pose_extraction_shooting_drills.py
-- Produces a short, data-focused summary using deterministic heuristics
-- Converts raw biomechanical measurements to 1-10 coaching scores
-- Applies age-based adjustments for different skill levels
-- Formats results into readable category breakdowns
+This agent processes hockey shooting analysis data and provides detailed breakdowns
+of individual biomechanical metrics with age-appropriate scoring adjustments.
+
+Key Features:
+- Individual metric scoring (Power: knee, hip, drive, transfer, torso)
+- Individual metric scoring (Form: left/right wrist, head position, stability)
+- Age-adjusted scoring with boost curves (7-9: 30%, 10-12: 20%, 13-16: 10%, 17+: 0%)
+- Bullet-point formatted output with consistent categories
+- No external AI dependencies - pure deterministic Python logic
 
 Usage:
   python data_summary_agent.py results/drill/foo_drill_feedback.json
 
-Features:
-- No external AI dependencies - pure Python logic
-- Age-adjusted scoring (7-9, 10-12, 13-16, 17+)
-- Category-based feedback (Power vs Form breakdown)
-- Individual wrist tracking (left/right separate)
+Output Format:
+- Age group information with applied boost percentage
+- Individual metric scores with age-adjusted values
+- Categories based on adjusted scores for consistency
+- Clean bullet-point formatting for readability
 """
 
 from __future__ import annotations
 
 import argparse
-import json
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from utils.config import load_env
 from utils.io import load_json_file
 load_env()
 
-# Using local formatting with deterministic heuristics only
-
-
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
 def load_feedback_json(json_path: Path) -> Dict[str, Any]:
     """Load a drill feedback JSON file using shared utility.
@@ -66,6 +67,10 @@ def format_timestamp(time_sec: float) -> str:
     except (ValueError, TypeError):
         return "N/A"
 
+
+# ============================================================================
+# INDIVIDUAL METRIC SCORING FUNCTIONS
+# ============================================================================
 
 def score_front_knee_bend(angle_deg: float) -> Tuple[int, str]:
     """Score front knee bend on 1-10 scale for high school/college level.
@@ -301,6 +306,10 @@ def _score_wrist_individual(score: float) -> int:
     else:
         return 2
 
+# ============================================================================
+# CATEGORY HELPER FUNCTIONS
+# ============================================================================
+
 def _get_wrist_category(score: float) -> str:
     """Get wrist extension category."""
     if score >= 9:
@@ -492,18 +501,22 @@ def score_body_stability(stability_data: Dict[str, Any]) -> Tuple[int, str]:
     else:
         return (2, "minimal")
 
-def calculate_power_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
-    """Calculate power score (70% weight) and individual power metrics.
+# ============================================================================
+# METRIC CALCULATION FUNCTIONS
+# ============================================================================
+
+def calculate_power_metrics(shot: Dict[str, Any]) -> Dict[str, Any]:
+    """Calculate individual power metrics from shot data.
     
     Args:
         shot: Shot data dictionary
         
     Returns:
-        Tuple of (power_score, power_metrics_dict)
+        Dictionary of power metrics with scores and categories
     """
     power_metrics = {}
     
-    # Front Knee Bend (15% of total)
+    # Front Knee Bend
     front_knee_angle = shot.get("front_knee_bend_deg")
     if front_knee_angle is not None:
         knee_score, knee_category = score_front_knee_bend(front_knee_angle)
@@ -515,7 +528,7 @@ def calculate_power_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
     else:
         power_metrics["front_knee"] = {"score": 1, "category": "not tracked", "angle": None}
     
-    # Hip Rotation Power (15% of total)
+    # Hip Rotation Power
     hip_rotation = shot.get("hip_rotation_power", {})
     if hip_rotation:
         hip_score, hip_category = score_hip_rotation_power(hip_rotation)
@@ -527,7 +540,7 @@ def calculate_power_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
     else:
         power_metrics["hip_rotation"] = {"score": 1, "category": "not tracked", "data": {}}
     
-    # Back Leg Drive (10% of total)
+    # Back Leg Drive
     back_leg_drive = shot.get("back_leg_drive", {})
     if back_leg_drive:
         drive_score, drive_category = score_back_leg_drive(back_leg_drive)
@@ -539,7 +552,7 @@ def calculate_power_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
     else:
         power_metrics["back_leg_drive"] = {"score": 1, "category": "not tracked", "data": {}}
     
-    # Weight Transfer (15% of total)
+    # Weight Transfer
     weight_transfer = shot.get("weight_transfer", {})
     if weight_transfer:
         transfer_score, transfer_category = score_weight_transfer(weight_transfer)
@@ -551,7 +564,7 @@ def calculate_power_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
     else:
         power_metrics["weight_transfer"] = {"score": 1, "category": "not tracked", "data": {}}
     
-    # Torso Rotation (15% of total)
+    # Torso Rotation
     torso_rotation = shot.get("torso_rotation", {})
     if torso_rotation:
         torso_score, torso_category = score_torso_rotation(torso_rotation)
@@ -563,31 +576,20 @@ def calculate_power_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
     else:
         power_metrics["torso_rotation"] = {"score": 1, "category": "not tracked", "data": {}}
     
-    # Calculate weighted power score
-    power_score = (
-        power_metrics["front_knee"]["score"] * 0.15 +
-        power_metrics["hip_rotation"]["score"] * 0.15 +
-        power_metrics["back_leg_drive"]["score"] * 0.10 +
-        power_metrics["weight_transfer"]["score"] * 0.15 +
-        power_metrics["torso_rotation"]["score"] * 0.15
-    )
-    
-    return power_score, power_metrics
+    return power_metrics
 
-def calculate_form_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
-    """Calculate form score (30% weight) and individual form metrics.
+def calculate_form_metrics(shot: Dict[str, Any]) -> Dict[str, Any]:
+    """Calculate individual form metrics from shot data.
     
     Args:
         shot: Shot data dictionary
         
     Returns:
-        Tuple of (form_score, form_metrics_dict)
+        Dictionary of form metrics with scores and categories
     """
     form_metrics = {}
-    tracked_metrics = []
-    total_weight = 0.0
     
-    # Wrist Extension (15% of total)
+    # Wrist Extension
     wrist_extension = shot.get("wrist_extension", {})
     if wrist_extension:
         wrist_score, wrist_category, wrist_breakdown = score_wrist_extension(wrist_extension)
@@ -598,9 +600,6 @@ def calculate_form_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
             "tracked": wrist_score > 0,
             "breakdown": wrist_breakdown
         }
-        if wrist_score > 0:
-            tracked_metrics.append(("wrist_extension", wrist_score, 0.15))
-            total_weight += 0.15
     else:
         form_metrics["wrist_extension"] = {
             "score": 0, 
@@ -614,7 +613,7 @@ def calculate_form_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
             }
         }
     
-    # Head Position (5% of total)
+    # Head Position
     head_position = shot.get("head_position", {})
     if head_position:
         head_score, head_category = score_head_position(head_position)
@@ -624,13 +623,10 @@ def calculate_form_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
             "data": head_position,
             "tracked": head_score > 0
         }
-        if head_score > 0:
-            tracked_metrics.append(("head_position", head_score, 0.05))
-            total_weight += 0.05
     else:
         form_metrics["head_position"] = {"score": 0, "category": "not tracked", "data": {}, "tracked": False}
     
-    # Body Stability (10% of total)
+    # Body Stability
     body_stability = shot.get("body_stability", {})
     if body_stability:
         stability_score, stability_category = score_body_stability(body_stability)
@@ -640,22 +636,14 @@ def calculate_form_score(shot: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
             "data": body_stability,
             "tracked": stability_score > 0
         }
-        if stability_score > 0:
-            tracked_metrics.append(("body_stability", stability_score, 0.10))
-            total_weight += 0.10
     else:
         form_metrics["body_stability"] = {"score": 0, "category": "not tracked", "data": {}, "tracked": False}
     
-    # Calculate weighted form score only from tracked metrics
-    if tracked_metrics and total_weight > 0:
-        # Normalize weights to sum to 1.0 for tracked metrics only
-        form_score = sum(score * (weight / total_weight) for _, score, weight in tracked_metrics)
-        # Scale back to original 30% of total
-        form_score = form_score * total_weight
-    else:
-        form_score = 0.0
-    
-    return form_score, form_metrics
+    return form_metrics
+
+# ============================================================================
+# AGE ADJUSTMENT FUNCTIONS
+# ============================================================================
 
 def apply_age_adjustment(score: float, age_group: str) -> float:
     """Apply age-based scoring adjustment based on predefined age groups.
@@ -703,8 +691,12 @@ def get_age_category(age_group: str) -> str:
     else:
         return "Unknown Age Group"
 
+# ============================================================================
+# DATA VALIDATION AND PROCESSING FUNCTIONS
+# ============================================================================
+
 def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate shot data and extract all relevant metrics with new scoring system.
+    """Validate shot data and extract all relevant metrics.
 
     Args:
         shot: One shot dict from the feedback JSON
@@ -723,44 +715,32 @@ def validate_shot_data(shot: Dict[str, Any]) -> Dict[str, Any]:
     result["age_group"] = age_group
     result["age_category"] = get_age_category(age_group)
     
-    # Calculate raw power and form scores
-    raw_power_score, power_metrics = calculate_power_score(shot)
-    raw_form_score, form_metrics = calculate_form_score(shot)
-    
-    # Apply age adjustments
-    adjusted_power_score = apply_age_adjustment(raw_power_score, age_group)
-    adjusted_form_score = apply_age_adjustment(raw_form_score, age_group)
-    
-    # Apply minimum score floor (1.0/10) to prevent discouraging scores
-    adjusted_power_score = max(adjusted_power_score, 1.0)
-    adjusted_form_score = max(adjusted_form_score, 1.0)
-    
-    # Store scores (both raw and adjusted) - removed overall_score
-    result["power_score"] = round(adjusted_power_score, 1)
-    result["form_score"] = round(adjusted_form_score, 1)
-    result["raw_power_score"] = round(raw_power_score, 1)
-    result["raw_form_score"] = round(raw_form_score, 1)
-    result["power_metrics"] = power_metrics
-    result["form_metrics"] = form_metrics
-    
-    # Legacy compatibility - keep some old fields
-    result["front_knee_angle"] = f"{power_metrics['front_knee']['angle']:.0f}°" if power_metrics['front_knee']['angle'] is not None else "not tracked"
-    result["hip_drive"] = f"{power_metrics['hip_rotation']['category']} ({power_metrics['hip_rotation']['score']}/10)"
-    result["wrist_performance"] = f"{form_metrics['wrist_extension']['category']} ({form_metrics['wrist_extension']['score']}/10)"
-    result["head_position"] = f"{form_metrics['head_position']['category']} ({form_metrics['head_position']['score']}/10)"
-    result["body_stability"] = f"{form_metrics['body_stability']['category']} ({form_metrics['body_stability']['score']}/10)"
+    # Calculate individual metrics
+    result["power_metrics"] = calculate_power_metrics(shot)
+    result["form_metrics"] = calculate_form_metrics(shot)
     
     return result
 
 
+# ============================================================================
+# OUTPUT FORMATTING FUNCTIONS
+# ============================================================================
+
 def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
-    """Generate formatted summary using local processing with new power vs form structure.
+    """Generate formatted summary with individual metrics and age-adjusted scoring.
+    
+    Creates a structured output showing:
+    - Shot timestamps
+    - Age group with boost percentage
+    - Individual power metrics (knee, hip, drive, transfer, torso)
+    - Individual form metrics (left/right wrist, head, stability)
+    - Age-adjusted scores with matching categories
     
     Args:
-        raw: Full analysis result dictionary
+        raw: Full analysis result dictionary from pose extraction
         
     Returns:
-        Formatted summary string in the new structured format
+        Formatted summary string with bullet-point structure
     """
     shots = raw.get("shots", [])
     if not shots:
@@ -897,10 +877,9 @@ def format_shot_summary_locally(raw: Dict[str, Any]) -> str:
     return timestamp_line + "\n\n" + age_line + "\n\n" + "\n\n".join(shot_lines)
 
 
-# All formatting done locally with deterministic heuristics
-
-
-
+# ============================================================================
+# FILE I/O FUNCTIONS
+# ============================================================================
 
 def save_summary_text(video_or_json: Path, summary: str) -> Path:
     """Save summary next to results JSON under results/drill/ with _summary.txt suffix."""
@@ -911,6 +890,10 @@ def save_summary_text(video_or_json: Path, summary: str) -> Path:
     out_path.write_text(summary)
     return out_path
 
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Data Summary Agent - Interprets pose_extraction_shooting_drills.py JSON output")
